@@ -6,6 +6,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Novel } from './novels/entities/novel.entity';
 import { NovelsModule } from './novels/novels.module';
+import { ChaptersModule } from './chapters/chapters.module';
+import { Chapter } from './chapters/chapters.entity';
 
 @Module({
     imports: [
@@ -23,12 +25,13 @@ import { NovelsModule } from './novels/novels.module';
                 username: configService.get<string>('DB_USERNAME'),
                 password: configService.get<string>('DB_PASSWORD'),
                 database: configService.get<string>('DB_DATABASE'),
-                entities: [Novel],
+                entities: [Novel, Chapter],
                 synchronize: true,
             }),
         }),
 
         NovelsModule,
+        ChaptersModule,
     ],
     controllers: [AppController],
     providers: [AppService],

@@ -1,4 +1,5 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Chapter } from 'src/chapters/chapters.entity';
+import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('novels')
 export class Novel {
@@ -19,4 +20,7 @@ export class Novel {
 
     @CreateDateColumn({ name: 'created_at', type: 'datetime' })
     createdAt!: Date;
+
+    @OneToMany(() => Chapter, (chapter) => chapter.novel)
+    chapters!: Chapter[];
 }

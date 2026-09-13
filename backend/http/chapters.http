@@ -1,0 +1,10 @@
+@baseUrl = http://localhost:3000/api/v1
+@novelId = 3
+@chapterId = 1
+
+### Get chapters by novel id
+GET {{baseUrl}}/chapters/novel/{{novelId}}
+
+
+### Get chapter by id
+GET {{baseUrl}}/chapters/{{chapterId}}
