@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
@@ -23,7 +24,16 @@ async function bootstrap() {
         allowedHeaders: ['Content-Type', 'Authorization'],
         credentials: false,
     });
+    const config = new DocumentBuilder()
+        .setTitle('Novel Crawler API')
+        .setDescription('API cho hệ thống Novel Crawler')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup(`${apiPrefix}/docs`, app, document);
     await app.listen(port);
     logger.log(`🚀 API: http://localhost:${port}/${apiPrefix}`);
+    logger.log(`🚀 Docs: http://localhost:${port}/${apiPrefix}/docs`);
 }
 bootstrap();
