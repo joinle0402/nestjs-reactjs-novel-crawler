@@ -10,6 +10,12 @@ async function bootstrap() {
     const port = configService.get<number>('PORT') ?? 3000;
     const apiPrefix = configService.get<string>('API_PREFIX') ?? '/api/v1';
     app.setGlobalPrefix(apiPrefix);
+    app.enableCors({
+        origin: ['http://localhost:5173'],
+        methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
+        credentials: false,
+    });
     await app.listen(port);
     logger.log(`🚀 API: http://localhost:${port}/${apiPrefix}`);
 }
