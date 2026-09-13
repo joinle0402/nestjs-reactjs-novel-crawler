@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
@@ -10,6 +10,13 @@ async function bootstrap() {
     const port = configService.get<number>('PORT') ?? 3000;
     const apiPrefix = configService.get<string>('API_PREFIX') ?? '/api/v1';
     app.setGlobalPrefix(apiPrefix);
+    app.useGlobalPipes(
+        new ValidationPipe({
+            whitelist: true,
+            forbidNonWhitelisted: true,
+            transform: true,
+        }),
+    );
     app.enableCors({
         origin: ['http://localhost:5173'],
         methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],

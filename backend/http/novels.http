@@ -1,0 +1,31 @@
+@baseUrl = http://localhost:3000/api/v1
+@novelId = 1
+
+### List all novels
+GET {{baseUrl}}/novels
+
+### Get novel by id
+GET {{baseUrl}}/novels/{{novelId}}
+
+### Create novel
+POST {{baseUrl}}/novels
+Content-Type: application/json
+
+{
+  "url": "https://example.com/novel/1",
+  "title": "My Novel",
+  "author": "Author Name",
+  "summary": "Short summary"
+}
+
+### Update novel
+PUT {{baseUrl}}/novels/{{novelId}}
+Content-Type: application/json
+
+{
+  "title": "Updated Title",
+  "author": "New Author"
+}
+
+### Delete novel
+DELETE {{baseUrl}}/novels/{{novelId}}
