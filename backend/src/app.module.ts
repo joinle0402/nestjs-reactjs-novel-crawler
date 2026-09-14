@@ -8,6 +8,7 @@ import { Novel } from './novels/entities/novel.entity';
 import { NovelsModule } from './novels/novels.module';
 import { ChaptersModule } from './chapters/chapters.module';
 import { Chapter } from './chapters/chapters.entity';
+import { SqlQueryLogger } from './common/logging/sql-query.logger';
 
 @Module({
     imports: [
@@ -18,16 +19,25 @@ import { Chapter } from './chapters/chapters.entity';
 
         TypeOrmModule.forRootAsync({
             inject: [ConfigService],
-            useFactory: (configService: ConfigService) => ({
-                type: 'mysql',
-                host: configService.get<string>('DB_HOST'),
-                port: configService.get<number>('DB_PORT'),
-                username: configService.get<string>('DB_USERNAME'),
-                password: configService.get<string>('DB_PASSWORD'),
-                database: configService.get<string>('DB_DATABASE'),
-                entities: [Novel, Chapter],
-                synchronize: true,
-            }),
+            useFactory: (configService: ConfigService) => {
+                const isDev = configService.get<string>('NODE_ENV') !== 'production';
+
+                return {
+                    type: 'mysql',
+                    host: configService.get<string>('DB_HOST'),
+                    port: configService.get<number>('DB_PORT'),
+                    username: configService.get<string>('DB_USERNAME'),
+                    password: configService.get<string>('DB_PASSWORD'),
+                    database: configService.get<string>('DB_DATABASE'),
+                    entities: [Novel, Chapter],
+                    synchronize: true,
+                    logging: isDev,
+                    logger: isDev ? new SqlQueryLogger() : undefined,
+                    // -1 => log every query via logQuerySlow (with duration).
+                    // Does not enable timeouts unless enableQueryTimeout is true.
+                    maxQueryExecutionTime: isDev ? -1 : undefined,
+                };
+            },
         }),
 
         NovelsModule,
