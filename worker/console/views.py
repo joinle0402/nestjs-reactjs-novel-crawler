@@ -447,7 +447,10 @@ def print_config() -> None:
 
         ("HEADLESS", config.HEADLESS),
 
-        ("DB_PATH", config.DB_PATH),
+        ("DB_HOST", config.DB_HOST),
+        ("DB_PORT", config.DB_PORT),
+        ("DB_DATABASE", config.DB_DATABASE),
+        ("SQLITE_PATH", config.SQLITE_PATH),
 
         ("MP3_OUTPUT_DIR", config.MP3_OUTPUT_DIR),
 

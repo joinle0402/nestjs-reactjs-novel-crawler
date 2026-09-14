@@ -7,6 +7,21 @@ GET {{baseUrl}}/novels
 ### Get novel by id
 GET {{baseUrl}}/novels/{{novelId}}
 
+### Get novel crawl/TTS stats
+GET {{baseUrl}}/novels/{{novelId}}/stats
+
+### Get playback position
+GET {{baseUrl}}/novels/{{novelId}}/playback
+
+### Update playback position
+PUT {{baseUrl}}/novels/{{novelId}}/playback
+Content-Type: application/json
+
+{
+  "chapterNumber": 1,
+  "positionSec": 12.5
+}
+
 ### Create novel
 POST {{baseUrl}}/novels
 Content-Type: application/json

@@ -3,16 +3,13 @@ import { NovelsController } from './novels.controller';
 import { NovelsService } from './novels.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Novel } from './entities/novel.entity';
-import { ChaptersModule } from 'src/chapters/chapters.module';
+import { Chapter } from 'src/chapters/chapters.entity';
+import { PlaybackState } from './entities/playback-state.entity';
 
 @Module({
-    imports: [
-        TypeOrmModule.forFeature([Novel]),
-    ],
+    imports: [TypeOrmModule.forFeature([Novel, Chapter, PlaybackState])],
     controllers: [NovelsController],
     providers: [NovelsService],
-    exports: [
-        NovelsService,
-    ],
+    exports: [NovelsService],
 })
-export class NovelsModule { }
+export class NovelsModule {}

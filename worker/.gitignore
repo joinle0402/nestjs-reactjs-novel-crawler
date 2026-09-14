@@ -2,11 +2,16 @@
 client_secret.json
 credentials.json
 token.json
+.env
+.env.local
 
 # Runtime data
 novels.db
+*.db
 browser_state.json
 output/
+logs/
+*.log
 
 # Python
 __pycache__/

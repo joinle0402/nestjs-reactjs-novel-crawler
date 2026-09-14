@@ -8,6 +8,7 @@ python-vlc>=3.0.0
 google-api-python-client>=2.100.0
 google-auth-oauthlib>=1.2.0
 google-auth-httplib2>=0.2.0
+pymysql>=1.1.0
 # pydub + ffmpeg (tùy chọn): ghép chunk chất lượng cao hơn; không có vẫn chạy được
 # Cài ffmpeg: winget install Gyan.FFmpeg
 # Player cần VLC: winget install VideoLAN.VLC

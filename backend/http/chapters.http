@@ -2,9 +2,20 @@
 @novelId = 3
 @chapterId = 1
 
-### Get chapters by novel id
+### Get chapters by novel id (paginated, no content)
 GET {{baseUrl}}/chapters/novel/{{novelId}}
 
+### Get chapters page 2
+GET {{baseUrl}}/chapters/novel/{{novelId}}?page=2&limit=20
 
-### Get chapter by id
+### Filter crawled completed
+GET {{baseUrl}}/chapters/novel/{{novelId}}?crawlStatus=completed
+
+### Filter chapters that have MP3
+GET {{baseUrl}}/chapters/novel/{{novelId}}?hasMp3=true
+
+### Filter pending TTS
+GET {{baseUrl}}/chapters/novel/{{novelId}}?ttsStatus=pending
+
+### Get chapter by id (includes content)
 GET {{baseUrl}}/chapters/{{chapterId}}

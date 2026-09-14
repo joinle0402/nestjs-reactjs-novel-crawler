@@ -8,6 +8,7 @@ import { Novel } from './novels/entities/novel.entity';
 import { NovelsModule } from './novels/novels.module';
 import { ChaptersModule } from './chapters/chapters.module';
 import { Chapter } from './chapters/chapters.entity';
+import { PlaybackState } from './novels/entities/playback-state.entity';
 import { SqlQueryLogger } from './common/logging/sql-query.logger';
 
 @Module({
@@ -29,7 +30,8 @@ import { SqlQueryLogger } from './common/logging/sql-query.logger';
                     username: configService.get<string>('DB_USERNAME'),
                     password: configService.get<string>('DB_PASSWORD'),
                     database: configService.get<string>('DB_DATABASE'),
-                    entities: [Novel, Chapter],
+                    charset: 'utf8mb4',
+                    entities: [Novel, Chapter, PlaybackState],
                     synchronize: true,
                     logging: isDev,
                     logger: isDev ? new SqlQueryLogger() : undefined,

@@ -6,7 +6,7 @@ export class Novel {
     @PrimaryGeneratedColumn()
     id!: number;
 
-    @Column({ type: 'varchar', length: 2048 })
+    @Column({ type: 'varchar', length: 512, unique: true })
     url!: string;
 
     @Column({ type: 'varchar', length: 500 })

@@ -1,5 +1,32 @@
 """Cấu hình crawler sangtacviet.com — sửa các giá trị dưới đây rồi chạy crawler.py."""
 
+import os
+from pathlib import Path
+
+WORKER_DIR = Path(__file__).resolve().parent
+REPO_ROOT = WORKER_DIR.parent
+
+
+def _load_env_file(path: Path, override: bool = False) -> None:
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if not key:
+            continue
+        if override or key not in os.environ:
+            os.environ[key] = value
+
+
+# Cùng DB với Nest: đọc backend/.env, worker/.env ghi đè nếu có
+_load_env_file(REPO_ROOT / "backend" / ".env", override=False)
+_load_env_file(WORKER_DIR / ".env", override=True)
+
 # Dán URL truyện vào đây, ví dụ:
 # https://sangtacviet.com/truyen/69shu/1/53962/
 NOVEL_URL = "https://sangtacviet.com/truyen/fanqie/1/7481496454264015897/"
@@ -20,21 +47,29 @@ CRAWL_403_COOLDOWN_SEC = 300  # 5 phút
 # (vẫn mở trang danh sách khi DB chưa có novel/list chương)
 CRAWL_VISIT_NOVEL_PAGE = False
 
-# SQLite
-DB_PATH = "novels.db"
+# MySQL — cùng database với NestJS backend
+DB_HOST = os.environ.get("DB_HOST", "127.0.0.1")
+DB_PORT = int(os.environ.get("DB_PORT", "3306"))
+DB_USERNAME = os.environ.get("DB_USERNAME", "root")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
+DB_DATABASE = os.environ.get("DB_DATABASE", "novel_crawler")
 
-# Thư mục lưu file MP3
-MP3_OUTPUT_DIR = "output/mp3"
+# SQLite cũ — chỉ dùng khi migrate
+SQLITE_PATH = os.environ.get("SQLITE_PATH", str(WORKER_DIR / "novels.db"))
+DB_PATH = SQLITE_PATH
+
+# Thư mục lưu file MP3 (luôn trong worker/, không phụ thuộc cwd)
+MP3_OUTPUT_DIR = str(WORKER_DIR / "output" / "mp3")
 
 # Google Drive — upload folder MP3
 GDRIVE_ENABLED = True
-GDRIVE_CREDENTIALS = "client_secret.json"  # OAuth Desktop app từ Google Cloud
-GDRIVE_TOKEN = "token.json"
+GDRIVE_CREDENTIALS = str(WORKER_DIR / "client_secret.json")
+GDRIVE_TOKEN = str(WORKER_DIR / "token.json")
 GDRIVE_ROOT_FOLDER = "novel-crawler-mp3"
 GDRIVE_AUTO_AFTER_TTS = False  # True = tự upload sau khi TTS xong
 
 # Nhạc nền MP3 — đặt None để tắt
-BGM_PATH = "Just_Stay_Aakash_Gandhi.mp3"
+BGM_PATH = str(WORKER_DIR / "Just_Stay_Aakash_Gandhi.mp3")
 BGM_VOLUME_DB = -18  # âm lượng nhạc nền (dB, số âm = nhỏ hơn giọng)
 BGM_LOOP = True  # lặp nhạc nếu chương dài hơn track
 BGM_FADE_IN_MS = 2000
@@ -73,7 +108,7 @@ TTS_CHUNK_SIZE = 1000  # ký tự mỗi chunk
 TTS_CHUNK_CONCURRENCY = 1  # số chunk TTS song song trong 1 chương
 
 # Lưu session Playwright sau captcha (tái sử dụng lần sau)
-BROWSER_STATE_PATH = "browser_state.json"
+BROWSER_STATE_PATH = str(WORKER_DIR / "browser_state.json")
 
 # API danh sách chương
 CHAPTER_LIST_API = (

@@ -1,15 +1,18 @@
-"""SQLite helpers cho novel crawler."""
+"""MySQL helpers cho novel crawler (cùng schema với NestJS)."""
 
 from __future__ import annotations
 
-import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Any, Dict, Iterator, Literal, Sequence
 
-from config import DB_PATH
+import pymysql
+from pymysql.cursors import DictCursor
+from pymysql.connections import Connection as MysqlConnection
+
+from config import DB_DATABASE, DB_HOST, DB_PASSWORD, DB_PORT, DB_USERNAME
 
 ChapterStatus = Literal["pending", "processing", "completed", "failed", "skipped"]
 
@@ -18,6 +21,8 @@ STATUS_PROCESSING = "processing"
 STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 STATUS_SKIPPED = "skipped"
+
+Row = Dict[str, Any]
 
 
 @dataclass
@@ -63,20 +68,74 @@ class PlaybackState:
     updated_at: str
 
 
-_DB_TIMEOUT_SEC = 30.0
+_DB_TIMEOUT_SEC = 30
 
 
-def _connect(db_path: str = DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path, timeout=_DB_TIMEOUT_SEC)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=30000")
-    return conn
+class ConnectionAdapter:
+    """sqlite-like execute/fetch API trên pymysql DictCursor."""
+
+    def __init__(self, conn: MysqlConnection) -> None:
+        self._conn = conn
+        self._cursor = conn.cursor()
+
+    def execute(self, sql: str, params: Sequence[Any] = ()) -> ConnectionAdapter:
+        self._cursor.execute(sql.replace("?", "%s"), params)
+        return self
+
+    def executescript(self, script: str) -> None:
+        for stmt in script.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                self._cursor.execute(stmt)
+
+    def fetchone(self) -> Row | None:
+        row = self._cursor.fetchone()
+        return dict(row) if row is not None else None
+
+    def fetchall(self) -> list[Row]:
+        return [dict(row) for row in self._cursor.fetchall()]
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
+
+    def close(self) -> None:
+        self._cursor.close()
+        self._conn.close()
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _as_iso(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value) if value is not None else ""
+
+
+def _connect() -> ConnectionAdapter:
+    conn = pymysql.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        user=DB_USERNAME,
+        password=DB_PASSWORD,
+        database=DB_DATABASE,
+        charset="utf8mb4",
+        cursorclass=DictCursor,
+        autocommit=False,
+        connect_timeout=_DB_TIMEOUT_SEC,
+        read_timeout=_DB_TIMEOUT_SEC,
+        write_timeout=_DB_TIMEOUT_SEC,
+    )
+    return ConnectionAdapter(conn)
 
 
 @contextmanager
-def get_db(db_path: str = DB_PATH) -> Iterator[sqlite3.Connection]:
-    conn = _connect(db_path)
+def get_db() -> Iterator[ConnectionAdapter]:
+    conn = _connect()
     try:
         yield conn
         conn.commit()
@@ -87,20 +146,34 @@ def get_db(db_path: str = DB_PATH) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
-def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    return any(row["name"] == column for row in rows)
-
-
-def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+def _column_exists(conn: ConnectionAdapter, table: str, column: str) -> bool:
     row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        """
+        SELECT COUNT(*) AS n
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = %s
+          AND COLUMN_NAME = %s
+        """,
+        (table, column),
+    ).fetchone()
+    return bool(row and int(row["n"]) > 0)
+
+
+def _table_exists(conn: ConnectionAdapter, table: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = %s
+        """,
         (table,),
     ).fetchone()
-    return row is not None
+    return bool(row and int(row["n"]) > 0)
 
 
-def _backfill_status_columns(conn: sqlite3.Connection) -> None:
+def _backfill_status_columns(conn: ConnectionAdapter) -> None:
     """Đồng bộ status từ content/mp3 cho DB cũ."""
     rows = conn.execute(
         """
@@ -130,88 +203,128 @@ def _backfill_status_columns(conn: sqlite3.Connection) -> None:
         _repair_tts_chars_total(conn, int(row["id"]), content, row, tts_status)
 
 
-def init_db(db_path: str = DB_PATH) -> None:
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    with get_db(db_path) as conn:
+def _ensure_database() -> None:
+    if not DB_DATABASE.replace("_", "").isalnum():
+        raise ValueError(f"Invalid DB_DATABASE: {DB_DATABASE}")
+    conn = pymysql.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        user=DB_USERNAME,
+        password=DB_PASSWORD,
+        charset="utf8mb4",
+        autocommit=True,
+        connect_timeout=_DB_TIMEOUT_SEC,
+    )
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"CREATE DATABASE IF NOT EXISTS `{DB_DATABASE}` "
+                "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+            )
+    finally:
+        conn.close()
+
+
+def init_db() -> None:
+    _ensure_database()
+    with get_db() as conn:
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS novels (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                url TEXT UNIQUE NOT NULL,
-                title TEXT NOT NULL,
-                author TEXT DEFAULT '',
-                summary TEXT DEFAULT '',
-                created_at TEXT NOT NULL
-            );
+                id INT NOT NULL AUTO_INCREMENT,
+                url VARCHAR(512) NOT NULL,
+                title VARCHAR(500) NOT NULL,
+                author VARCHAR(255) NULL,
+                summary TEXT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                UNIQUE KEY uk_novels_url (url)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
             CREATE TABLE IF NOT EXISTS chapters (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                novel_id INTEGER NOT NULL,
-                chapter_site_id TEXT NOT NULL,
-                chapter_number INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                content TEXT NOT NULL,
-                mp3_path TEXT,
-                crawled_at TEXT NOT NULL,
-                crawl_status TEXT DEFAULT 'pending',
-                tts_status TEXT DEFAULT 'pending',
-                UNIQUE(novel_id, chapter_site_id),
-                FOREIGN KEY (novel_id) REFERENCES novels(id)
-            );
+                id INT NOT NULL AUTO_INCREMENT,
+                novel_id INT NOT NULL,
+                chapter_site_id VARCHAR(191) NOT NULL,
+                chapter_number INT NOT NULL,
+                title VARCHAR(500) NOT NULL,
+                content LONGTEXT NULL,
+                mp3_path VARCHAR(2048) NULL,
+                crawled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                crawl_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                tts_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                tts_chars_total INT NOT NULL DEFAULT 0,
+                tts_chars_done INT NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                UNIQUE KEY uk_chapters_novel_site (novel_id, chapter_site_id),
+                CONSTRAINT fk_chapters_novel
+                    FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
             CREATE TABLE IF NOT EXISTS playback_state (
-                novel_id INTEGER PRIMARY KEY,
-                chapter_number INTEGER NOT NULL,
-                position_sec REAL NOT NULL DEFAULT 0,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (novel_id) REFERENCES novels(id)
-            );
+                novel_id INT NOT NULL,
+                chapter_number INT NOT NULL,
+                position_sec DOUBLE NOT NULL DEFAULT 0,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (novel_id),
+                CONSTRAINT fk_playback_novel
+                    FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """
         )
 
+        if not _column_exists(conn, "chapters", "mp3_path"):
+            conn.execute("ALTER TABLE chapters ADD COLUMN mp3_path VARCHAR(2048) NULL")
+        if not _column_exists(conn, "chapters", "crawled_at"):
+            conn.execute(
+                "ALTER TABLE chapters ADD COLUMN crawled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+            )
         if not _column_exists(conn, "chapters", "crawl_status"):
             conn.execute(
-                "ALTER TABLE chapters ADD COLUMN crawl_status TEXT DEFAULT 'pending'"
+                "ALTER TABLE chapters ADD COLUMN crawl_status VARCHAR(20) NOT NULL DEFAULT 'pending'"
             )
         if not _column_exists(conn, "chapters", "tts_status"):
             conn.execute(
-                "ALTER TABLE chapters ADD COLUMN tts_status TEXT DEFAULT 'pending'"
+                "ALTER TABLE chapters ADD COLUMN tts_status VARCHAR(20) NOT NULL DEFAULT 'pending'"
             )
         if not _column_exists(conn, "chapters", "tts_chars_total"):
             conn.execute(
-                "ALTER TABLE chapters ADD COLUMN tts_chars_total INTEGER DEFAULT 0"
+                "ALTER TABLE chapters ADD COLUMN tts_chars_total INT NOT NULL DEFAULT 0"
             )
         if not _column_exists(conn, "chapters", "tts_chars_done"):
             conn.execute(
-                "ALTER TABLE chapters ADD COLUMN tts_chars_done INTEGER DEFAULT 0"
+                "ALTER TABLE chapters ADD COLUMN tts_chars_done INT NOT NULL DEFAULT 0"
             )
         if not _table_exists(conn, "playback_state"):
             conn.execute(
                 """
                 CREATE TABLE playback_state (
-                    novel_id INTEGER PRIMARY KEY,
-                    chapter_number INTEGER NOT NULL,
-                    position_sec REAL NOT NULL DEFAULT 0,
-                    updated_at TEXT NOT NULL,
-                    FOREIGN KEY (novel_id) REFERENCES novels(id)
-                )
+                    novel_id INT NOT NULL,
+                    chapter_number INT NOT NULL,
+                    position_sec DOUBLE NOT NULL DEFAULT 0,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (novel_id),
+                    CONSTRAINT fk_playback_novel
+                        FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """
             )
 
         _backfill_status_columns(conn)
 
 
-def upsert_novel(url: str, title: str, author: str, summary: str, db_path: str = DB_PATH) -> int:
-    now = datetime.now(timezone.utc).isoformat()
-    with get_db(db_path) as conn:
+def upsert_novel(url: str, title: str, author: str, summary: str) -> int:
+    now = _now()
+    with get_db() as conn:
         conn.execute(
             """
             INSERT INTO novels (url, title, author, summary, created_at)
             VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(url) DO UPDATE SET
-                title = excluded.title,
-                author = excluded.author,
-                summary = excluded.summary
+            ON DUPLICATE KEY UPDATE
+                title = VALUES(title),
+                author = VALUES(author),
+                summary = VALUES(summary)
             """,
             (url, title, author, summary, now),
         )
@@ -225,22 +338,21 @@ def upsert_chapter(
     chapter_number: int,
     title: str,
     content: str,
-    db_path: str = DB_PATH,
 ) -> int:
-    now = datetime.now(timezone.utc).isoformat()
+    now = _now()
     crawl_status = STATUS_COMPLETED if chapter_has_content(content) else STATUS_PENDING
-    with get_db(db_path) as conn:
+    with get_db() as conn:
         conn.execute(
             """
             INSERT INTO chapters
                 (novel_id, chapter_site_id, chapter_number, title, content,
                  crawled_at, crawl_status)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(novel_id, chapter_site_id) DO UPDATE SET
-                title = excluded.title,
-                content = excluded.content,
-                crawled_at = excluded.crawled_at,
-                crawl_status = excluded.crawl_status
+            ON DUPLICATE KEY UPDATE
+                title = VALUES(title),
+                content = VALUES(content),
+                crawled_at = VALUES(crawled_at),
+                crawl_status = VALUES(crawl_status)
             """,
             (novel_id, chapter_site_id, chapter_number, title, content, now, crawl_status),
         )
@@ -253,8 +365,8 @@ def upsert_chapter(
         return chapter_id
 
 
-def update_chapter_mp3(chapter_id: int, mp3_path: str, db_path: str = DB_PATH) -> None:
-    with get_db(db_path) as conn:
+def update_chapter_mp3(chapter_id: int, mp3_path: str) -> None:
+    with get_db() as conn:
         conn.execute(
             """
             UPDATE chapters
@@ -266,9 +378,9 @@ def update_chapter_mp3(chapter_id: int, mp3_path: str, db_path: str = DB_PATH) -
         )
 
 
-def start_tts_chapter(chapter_id: int, chars_total: int, db_path: str = DB_PATH) -> None:
+def start_tts_chapter(chapter_id: int, chars_total: int) -> None:
     """Đánh dấu chương đang TTS và reset progress ký tự."""
-    with get_db(db_path) as conn:
+    with get_db() as conn:
         conn.execute(
             """
             UPDATE chapters
@@ -279,13 +391,9 @@ def start_tts_chapter(chapter_id: int, chars_total: int, db_path: str = DB_PATH)
         )
 
 
-def increment_tts_chars_done(
-    chapter_id: int,
-    delta: int,
-    db_path: str = DB_PATH,
-) -> tuple[int, int]:
+def increment_tts_chars_done(chapter_id: int, delta: int) -> tuple[int, int]:
     """Cộng ký tự đã TTS; trả về (done, total)."""
-    with get_db(db_path) as conn:
+    with get_db() as conn:
         conn.execute(
             "UPDATE chapters SET tts_chars_done = tts_chars_done + ? WHERE id=?",
             (delta, chapter_id),
@@ -299,9 +407,9 @@ def increment_tts_chars_done(
     return int(row["tts_chars_done"]), int(row["tts_chars_total"])
 
 
-def reset_processing_tts_chapters(novel_id: int, db_path: str = DB_PATH) -> None:
+def reset_processing_tts_chapters(novel_id: int) -> None:
     """Reset chương processing về pending (sau Ctrl+C)."""
-    with get_db(db_path) as conn:
+    with get_db() as conn:
         conn.execute(
             """
             UPDATE chapters
@@ -312,24 +420,16 @@ def reset_processing_tts_chapters(novel_id: int, db_path: str = DB_PATH) -> None
         )
 
 
-def update_crawl_status(
-    chapter_id: int,
-    status: ChapterStatus,
-    db_path: str = DB_PATH,
-) -> None:
-    with get_db(db_path) as conn:
+def update_crawl_status(chapter_id: int, status: ChapterStatus) -> None:
+    with get_db() as conn:
         conn.execute(
             "UPDATE chapters SET crawl_status=? WHERE id=?",
             (status, chapter_id),
         )
 
 
-def update_tts_status(
-    chapter_id: int,
-    status: ChapterStatus,
-    db_path: str = DB_PATH,
-) -> None:
-    with get_db(db_path) as conn:
+def update_tts_status(chapter_id: int, status: ChapterStatus) -> None:
+    with get_db() as conn:
         conn.execute(
             "UPDATE chapters SET tts_status=? WHERE id=?",
             (status, chapter_id),
@@ -341,11 +441,10 @@ def ensure_chapter_record(
     chapter_site_id: str,
     chapter_number: int,
     title: str,
-    db_path: str = DB_PATH,
 ) -> None:
     """Tạo record chương nếu chưa có (không ghi đè content đã cào)."""
-    now = datetime.now(timezone.utc).isoformat()
-    with get_db(db_path) as conn:
+    now = _now()
+    with get_db() as conn:
         row = conn.execute(
             "SELECT id FROM chapters WHERE novel_id = ? AND chapter_site_id = ?",
             (novel_id, chapter_site_id),
@@ -377,10 +476,10 @@ def chapter_has_content(content: str, min_len: int = 50) -> bool:
 
 
 def _repair_tts_chars_total(
-    conn: sqlite3.Connection,
+    conn: ConnectionAdapter,
     chapter_id: int,
     content: str,
-    row: sqlite3.Row,
+    row: Row,
     tts_status: str | None = None,
 ) -> None:
     """Khôi phục tts_chars_total từ content nếu bị về 0."""
@@ -398,7 +497,7 @@ def _repair_tts_chars_total(
 
 
 def _sync_tts_chars_total_on_conn(
-    conn: sqlite3.Connection,
+    conn: ConnectionAdapter,
     chapter_id: int,
     content: str,
 ) -> None:
@@ -417,26 +516,22 @@ def _sync_tts_chars_total_on_conn(
     _repair_tts_chars_total(conn, chapter_id, content, row)
 
 
-def sync_tts_chars_total_from_content(
-    chapter_id: int,
-    content: str,
-    db_path: str = DB_PATH,
-) -> None:
+def sync_tts_chars_total_from_content(chapter_id: int, content: str) -> None:
     """Cập nhật tts_chars_total từ content nếu đang 0 và có nội dung."""
     if not chapter_has_content(content):
         return
-    with get_db(db_path) as conn:
+    with get_db() as conn:
         _sync_tts_chars_total_on_conn(conn, chapter_id, content)
 
 
-def _row_to_chapter(row: sqlite3.Row) -> Chapter:
+def _row_to_chapter(row: Row) -> Chapter:
     return Chapter(
         id=row["id"],
         novel_id=row["novel_id"],
         chapter_site_id=row["chapter_site_id"],
         chapter_number=row["chapter_number"],
         title=row["title"],
-        content=row["content"],
+        content=row["content"] or "",
         mp3_path=row["mp3_path"],
         crawl_status=row["crawl_status"] or STATUS_PENDING,
         tts_status=row["tts_status"] or STATUS_PENDING,
@@ -445,8 +540,8 @@ def _row_to_chapter(row: sqlite3.Row) -> Chapter:
     )
 
 
-def get_chapters_for_novel(novel_id: int, db_path: str = DB_PATH) -> list[Chapter]:
-    with get_db(db_path) as conn:
+def get_chapters_for_novel(novel_id: int) -> list[Chapter]:
+    with get_db() as conn:
         rows = conn.execute(
             """
             SELECT id, novel_id, chapter_site_id, chapter_number, title, content,
@@ -472,12 +567,9 @@ def _status_sort_key(status: str) -> int:
     return 3
 
 
-def get_processing_tts_chapters(
-    novel_id: int,
-    db_path: str = DB_PATH,
-) -> list[Chapter]:
+def get_processing_tts_chapters(novel_id: int) -> list[Chapter]:
     """Chương đang TTS (processing) của một truyện."""
-    chapters = get_chapters_for_novel(novel_id, db_path)
+    chapters = get_chapters_for_novel(novel_id)
     return [ch for ch in chapters if ch.tts_status == STATUS_PROCESSING]
 
 
@@ -495,8 +587,8 @@ def sort_chapters_for_tts(chapters: list[Chapter]) -> list[Chapter]:
     )
 
 
-def get_novel_by_id(novel_id: int, db_path: str = DB_PATH) -> Novel | None:
-    with get_db(db_path) as conn:
+def get_novel_by_id(novel_id: int) -> Novel | None:
+    with get_db() as conn:
         row = conn.execute(
             "SELECT id, url, title, author, summary FROM novels WHERE id = ?",
             (novel_id,),
@@ -507,19 +599,19 @@ def get_novel_by_id(novel_id: int, db_path: str = DB_PATH) -> Novel | None:
         id=row["id"],
         url=row["url"],
         title=row["title"],
-        author=row["author"],
-        summary=row["summary"],
+        author=row["author"] or "",
+        summary=row["summary"] or "",
     )
 
 
-def get_novel_by_url(url: str, db_path: str = DB_PATH) -> Novel | None:
+def get_novel_by_url(url: str) -> Novel | None:
     """Tìm novel theo URL (thử cả biến thể có/không trailing slash)."""
     candidates = [url]
     if url.endswith("/"):
         candidates.append(url.rstrip("/"))
     else:
         candidates.append(url + "/")
-    with get_db(db_path) as conn:
+    with get_db() as conn:
         for candidate in candidates:
             row = conn.execute(
                 "SELECT id, url, title, author, summary FROM novels WHERE url = ?",
@@ -530,14 +622,14 @@ def get_novel_by_url(url: str, db_path: str = DB_PATH) -> Novel | None:
                     id=row["id"],
                     url=row["url"],
                     title=row["title"],
-                    author=row["author"],
-                    summary=row["summary"],
+                    author=row["author"] or "",
+                    summary=row["summary"] or "",
                 )
     return None
 
 
-def list_novels(db_path: str = DB_PATH) -> list[Novel]:
-    with get_db(db_path) as conn:
+def list_novels() -> list[Novel]:
+    with get_db() as conn:
         rows = conn.execute(
             "SELECT id, url, title, author, summary FROM novels ORDER BY id"
         ).fetchall()
@@ -546,15 +638,15 @@ def list_novels(db_path: str = DB_PATH) -> list[Novel]:
             id=row["id"],
             url=row["url"],
             title=row["title"],
-            author=row["author"],
-            summary=row["summary"],
+            author=row["author"] or "",
+            summary=row["summary"] or "",
         )
         for row in rows
     ]
 
 
-def get_latest_novel(db_path: str = DB_PATH) -> Novel | None:
-    with get_db(db_path) as conn:
+def get_latest_novel() -> Novel | None:
+    with get_db() as conn:
         row = conn.execute(
             "SELECT id, url, title, author, summary FROM novels ORDER BY id DESC LIMIT 1",
         ).fetchone()
@@ -564,16 +656,16 @@ def get_latest_novel(db_path: str = DB_PATH) -> Novel | None:
         id=row["id"],
         url=row["url"],
         title=row["title"],
-        author=row["author"],
-        summary=row["summary"],
+        author=row["author"] or "",
+        summary=row["summary"] or "",
     )
 
 
-def get_novel_stats(novel_id: int, db_path: str = DB_PATH) -> NovelStats | None:
-    novel = get_novel_by_id(novel_id, db_path)
+def get_novel_stats(novel_id: int) -> NovelStats | None:
+    novel = get_novel_by_id(novel_id)
     if not novel:
         return None
-    chapters = get_chapters_for_novel(novel_id, db_path)
+    chapters = get_chapters_for_novel(novel_id)
     crawled = sum(1 for ch in chapters if ch.crawl_status == STATUS_COMPLETED)
     tts_done = sum(1 for ch in chapters if ch.tts_status == STATUS_COMPLETED)
     crawl_failed = sum(1 for ch in chapters if ch.crawl_status == STATUS_FAILED)
@@ -591,48 +683,39 @@ def get_novel_stats(novel_id: int, db_path: str = DB_PATH) -> NovelStats | None:
 
 def _mp3_needs_generation(mp3_path: str | None) -> bool:
     """True nếu chưa có MP3 hoặc file trên disk không tồn tại."""
-    if not mp3_path or not mp3_path.strip():
+    if not mp3_path or not str(mp3_path).strip():
         return True
     return not Path(mp3_path).is_file()
 
 
-def get_chapters_without_mp3(novel_id: int, db_path: str = DB_PATH) -> list[Chapter]:
-    chapters = get_chapters_for_novel(novel_id, db_path)
+def get_chapters_without_mp3(novel_id: int) -> list[Chapter]:
+    chapters = get_chapters_for_novel(novel_id)
     return [ch for ch in chapters if _mp3_needs_generation(ch.mp3_path)]
 
 
-def get_chapters_with_mp3(novel_id: int, db_path: str = DB_PATH) -> list[Chapter]:
-    chapters = get_chapters_for_novel(novel_id, db_path)
-    return [
-        ch
-        for ch in chapters
-        if not _mp3_needs_generation(ch.mp3_path)
-    ]
+def get_chapters_with_mp3(novel_id: int) -> list[Chapter]:
+    chapters = get_chapters_for_novel(novel_id)
+    return [ch for ch in chapters if not _mp3_needs_generation(ch.mp3_path)]
 
 
-def save_playback_state(
-    novel_id: int,
-    chapter_number: int,
-    position_sec: float,
-    db_path: str = DB_PATH,
-) -> None:
-    now = datetime.now(timezone.utc).isoformat()
-    with get_db(db_path) as conn:
+def save_playback_state(novel_id: int, chapter_number: int, position_sec: float) -> None:
+    now = _now()
+    with get_db() as conn:
         conn.execute(
             """
             INSERT INTO playback_state (novel_id, chapter_number, position_sec, updated_at)
             VALUES (?, ?, ?, ?)
-            ON CONFLICT(novel_id) DO UPDATE SET
-                chapter_number = excluded.chapter_number,
-                position_sec = excluded.position_sec,
-                updated_at = excluded.updated_at
+            ON DUPLICATE KEY UPDATE
+                chapter_number = VALUES(chapter_number),
+                position_sec = VALUES(position_sec),
+                updated_at = VALUES(updated_at)
             """,
             (novel_id, chapter_number, position_sec, now),
         )
 
 
-def get_playback_state(novel_id: int, db_path: str = DB_PATH) -> PlaybackState | None:
-    with get_db(db_path) as conn:
+def get_playback_state(novel_id: int) -> PlaybackState | None:
+    with get_db() as conn:
         row = conn.execute(
             "SELECT novel_id, chapter_number, position_sec, updated_at "
             "FROM playback_state WHERE novel_id = ?",
@@ -643,6 +726,6 @@ def get_playback_state(novel_id: int, db_path: str = DB_PATH) -> PlaybackState |
     return PlaybackState(
         novel_id=row["novel_id"],
         chapter_number=row["chapter_number"],
-        position_sec=row["position_sec"],
-        updated_at=row["updated_at"],
+        position_sec=float(row["position_sec"] or 0),
+        updated_at=_as_iso(row["updated_at"]),
     )
