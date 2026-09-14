@@ -5,6 +5,7 @@ import { CreateNovelRequest } from './dtos/requests/create-novel.request';
 import { UpdateNovelRequest } from './dtos/requests/update-novel.request';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { NovelStatsResponse } from './dtos/responses/novel-stats.response';
+import { NovelListItemResponse } from './dtos/responses/novel-list-item.response';
 import { UpdatePlaybackRequest } from './dtos/requests/update-playback.request';
 import { PlaybackState } from './entities/playback-state.entity';
 
@@ -14,9 +15,9 @@ export class NovelsController {
     constructor(private readonly novelsService: NovelsService) {}
 
     @Get()
-    @ApiOperation({ summary: 'Lấy danh sách truyện' })
-    @ApiResponse({ status: 200, description: 'Lấy danh sách truyện thành công' })
-    async findAll(): Promise<Novel[]> {
+    @ApiOperation({ summary: 'Lấy danh sách truyện kèm thống kê crawl/TTS' })
+    @ApiResponse({ status: 200, type: [NovelListItemResponse] })
+    async findAll(): Promise<NovelListItemResponse[]> {
         return this.novelsService.findAll();
     }
 

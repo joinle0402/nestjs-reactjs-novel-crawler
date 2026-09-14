@@ -1,7 +1,7 @@
 @baseUrl = http://localhost:3000/api/v1
 @novelId = 1
 
-### List all novels
+### List all novels (kèm stats crawl/TTS)
 GET {{baseUrl}}/novels
 
 ### Get novel by id

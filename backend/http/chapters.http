@@ -17,5 +17,5 @@ GET {{baseUrl}}/chapters/novel/{{novelId}}?hasMp3=true
 ### Filter pending TTS
 GET {{baseUrl}}/chapters/novel/{{novelId}}?ttsStatus=pending
 
-### Get chapter by id (includes content)
+### Get chapter by id (includes content + prev/next)
 GET {{baseUrl}}/chapters/{{chapterId}}

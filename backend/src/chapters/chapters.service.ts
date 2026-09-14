@@ -1,11 +1,12 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Chapter } from './chapters.entity';
-import { Repository } from 'typeorm';
+import { LessThan, MoreThan, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NovelsService } from 'src/novels/novels.service';
 import { throwUnless } from 'src/common/utils/throw-if';
 import { ListChaptersQuery } from './dtos/requests/list-chapters.query';
 import { paginated, PaginatedResponse } from 'src/common/dtos/paginated.response';
+import { ChapterDetailResponse, ChapterNeighbor } from './dtos/responses/chapter-detail.response';
 
 export type ChapterListItem = {
     id: number;
@@ -74,10 +75,50 @@ export class ChaptersService {
         );
     }
 
-    async findById(id: number): Promise<Chapter> {
+    async findById(id: number): Promise<ChapterDetailResponse> {
         const model = await this.chaptersRepository.findOne({ where: { id } });
         throwUnless(model, `Không tìm thấy chương với id ${id}`, HttpStatus.NOT_FOUND);
-        return model;
+
+        const [prev, next] = await Promise.all([this.findNeighbor(model, 'prev'), this.findNeighbor(model, 'next')]);
+
+        return {
+            id: model.id,
+            novelId: model.novelId,
+            chapterSiteId: model.chapterSiteId,
+            chapterNumber: model.chapterNumber,
+            title: model.title,
+            content: model.content,
+            mp3Path: model.mp3Path,
+            hasMp3: Boolean(model.mp3Path),
+            crawledAt: model.crawledAt,
+            crawlStatus: model.crawlStatus,
+            ttsStatus: model.ttsStatus,
+            ttsCharsTotal: model.ttsCharsTotal,
+            ttsCharsDone: model.ttsCharsDone,
+            createdAt: model.createdAt,
+            updatedAt: model.updatedAt,
+            prev,
+            next,
+        };
+    }
+
+    private async findNeighbor(chapter: Chapter, direction: 'prev' | 'next'): Promise<ChapterNeighbor | null> {
+        const neighbor = await this.chaptersRepository.findOne({
+            where: {
+                novelId: chapter.novelId,
+                chapterNumber: direction === 'prev' ? LessThan(chapter.chapterNumber) : MoreThan(chapter.chapterNumber),
+            },
+            order: { chapterNumber: direction === 'prev' ? 'DESC' : 'ASC' },
+            select: { id: true, chapterNumber: true, title: true },
+        });
+        if (!neighbor) {
+            return null;
+        }
+        return {
+            id: neighbor.id,
+            chapterNumber: neighbor.chapterNumber,
+            title: neighbor.title,
+        };
     }
 
     private toListItem(chapter: Chapter): ChapterListItem {

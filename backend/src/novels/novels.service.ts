@@ -8,6 +8,7 @@ import { UpdateNovelRequest } from './dtos/requests/update-novel.request';
 import { Chapter } from '../chapters/chapters.entity';
 import { PlaybackState } from './entities/playback-state.entity';
 import { NovelStatsResponse } from './dtos/responses/novel-stats.response';
+import { NovelListItemResponse, NovelStatsCounts, toNovelStatsResponse, toStatsCounts } from './dtos/responses/novel-list-item.response';
 import { UpdatePlaybackRequest } from './dtos/requests/update-playback.request';
 import { JobStatus } from '../common/enums/job-status.enum';
 
@@ -22,10 +23,21 @@ export class NovelsService {
         private readonly playbackRepository: Repository<PlaybackState>,
     ) {}
 
-    async findAll(): Promise<Novel[]> {
-        return this.novelsRepository.find({
+    async findAll(): Promise<NovelListItemResponse[]> {
+        const novels = await this.novelsRepository.find({
             order: { id: 'DESC' },
         });
+        const statsByNovelId = await this.getStatsByNovelIds(novels.map((novel) => novel.id));
+
+        return novels.map((novel) => ({
+            id: novel.id,
+            url: novel.url,
+            title: novel.title,
+            author: novel.author,
+            summary: novel.summary,
+            createdAt: novel.createdAt,
+            stats: statsByNovelId.get(novel.id) ?? toStatsCounts(),
+        }));
     }
 
     async findOne(id: number): Promise<Novel> {
@@ -52,19 +64,32 @@ export class NovelsService {
 
     async getStats(id: number): Promise<NovelStatsResponse> {
         const novel = await this.findOne(id);
-        const raw = await this.chaptersRepository
+        const statsByNovelId = await this.getStatsByNovelIds([id]);
+        return toNovelStatsResponse(novel.id, novel.title, statsByNovelId.get(id) ?? toStatsCounts());
+    }
+
+    private async getStatsByNovelIds(ids: number[]): Promise<Map<number, NovelStatsCounts>> {
+        const statsByNovelId = new Map<number, NovelStatsCounts>();
+        if (ids.length === 0) {
+            return statsByNovelId;
+        }
+
+        const rows = await this.chaptersRepository
             .createQueryBuilder('chapter')
-            .select('COUNT(*)', 'total')
+            .select('chapter.novel_id', 'novelId')
+            .addSelect('COUNT(*)', 'total')
             .addSelect('SUM(CASE WHEN chapter.crawl_status = :completed THEN 1 ELSE 0 END)', 'crawled')
             .addSelect('SUM(CASE WHEN chapter.tts_status = :completed THEN 1 ELSE 0 END)', 'ttsDone')
             .addSelect('SUM(CASE WHEN chapter.crawl_status = :failed THEN 1 ELSE 0 END)', 'crawlFailed')
             .addSelect('SUM(CASE WHEN chapter.tts_status = :failed THEN 1 ELSE 0 END)', 'ttsFailed')
-            .where('chapter.novel_id = :novelId', {
-                novelId: id,
+            .where('chapter.novel_id IN (:...ids)', {
+                ids,
                 completed: JobStatus.COMPLETED,
                 failed: JobStatus.FAILED,
             })
-            .getRawOne<{
+            .groupBy('chapter.novel_id')
+            .getRawMany<{
+                novelId: string | number;
                 total: string;
                 crawled: string | null;
                 ttsDone: string | null;
@@ -72,15 +97,10 @@ export class NovelsService {
                 ttsFailed: string | null;
             }>();
 
-        return {
-            novelId: novel.id,
-            title: novel.title,
-            total: Number(raw?.total ?? 0),
-            crawled: Number(raw?.crawled ?? 0),
-            ttsDone: Number(raw?.ttsDone ?? 0),
-            crawlFailed: Number(raw?.crawlFailed ?? 0),
-            ttsFailed: Number(raw?.ttsFailed ?? 0),
-        };
+        for (const row of rows) {
+            statsByNovelId.set(Number(row.novelId), toStatsCounts(row));
+        }
+        return statsByNovelId;
     }
 
     async getPlayback(id: number): Promise<PlaybackState | null> {

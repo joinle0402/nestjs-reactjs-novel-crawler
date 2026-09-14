@@ -1,9 +1,9 @@
 import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ChaptersService, ChapterListItem } from './chapters.service';
-import { Chapter } from './chapters.entity';
 import { ListChaptersQuery } from './dtos/requests/list-chapters.query';
 import { PaginatedResponse } from 'src/common/dtos/paginated.response';
+import { ChapterDetailResponse } from './dtos/responses/chapter-detail.response';
 
 @ApiTags('Chapters')
 @Controller('chapters')
@@ -17,8 +17,9 @@ export class ChaptersController {
     }
 
     @Get(':id')
-    @ApiOperation({ summary: 'Chi tiết 1 chương (có content)' })
-    async findById(@Param('id', ParseIntPipe) id: number): Promise<Chapter> {
+    @ApiOperation({ summary: 'Chi tiết 1 chương (có content + prev/next)' })
+    @ApiResponse({ status: 200, type: ChapterDetailResponse })
+    async findById(@Param('id', ParseIntPipe) id: number): Promise<ChapterDetailResponse> {
         return this.chaptersService.findById(id);
     }
 }
