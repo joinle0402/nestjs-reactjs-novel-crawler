@@ -73,6 +73,7 @@ async function findNearestWithAudio(
 export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const trackRef = useRef<PlayableTrack | null>(null);
+    const rateRef = useRef(1.5);
     const lastSavedAtRef = useRef(0);
     const pendingResumeRef = useRef<number | null>(null);
 
@@ -88,11 +89,22 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }, [track]);
 
     useEffect(() => {
+        rateRef.current = rate;
+        const audio = audioRef.current;
+        if (audio) {
+            audio.playbackRate = rate;
+        }
+    }, [rate]);
+
+    useEffect(() => {
         const audio = new Audio();
         audio.preload = 'metadata';
+        audio.playbackRate = rateRef.current;
         audioRef.current = audio;
 
         const onLoaded = () => {
+            // Changing src / load() resets playbackRate to 1 — re-apply UI rate.
+            audio.playbackRate = rateRef.current;
             setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
             const resumeAt = pendingResumeRef.current;
             if (resumeAt != null && resumeAt > 0 && resumeAt < audio.duration) {
@@ -182,12 +194,12 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         lastSavedAtRef.current = 0;
 
         audio.src = getChapterAudioUrl(chapter.id);
-        console.log(rate);
-        
-        audio.playbackRate = rate;
         audio.load();
+        // load() resets playbackRate; set again before play and again on loadedmetadata.
+        audio.playbackRate = rateRef.current;
         try {
             await audio.play();
+            audio.playbackRate = rateRef.current;
             setStatus('playing');
         } catch {
             setStatus('paused');
@@ -310,8 +322,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     };
 
     const setRate = (nextRate: number) => {
-        const audio = audioRef.current;
+        rateRef.current = nextRate;
         setRateState(nextRate);
+        const audio = audioRef.current;
         if (audio) {
             audio.playbackRate = nextRate;
         }
