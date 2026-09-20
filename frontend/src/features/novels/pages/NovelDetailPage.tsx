@@ -126,16 +126,16 @@ export function NovelDetailPage() {
         <Space orientation="vertical" size={16} style={{ width: '100%' }}>
             <Breadcrumb
                 items={[
-                    { title: <Link to="/">Truyện</Link> },
+                    { title: <Link to="/">Dashboard</Link> },
                     { title: novel.title },
                 ]}
             />
 
-            <Card>
-                <Typography.Title level={2} style={{ marginTop: 0 }}>
+            <Card size="small">
+                <Typography.Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>
                     {novel.title}
                 </Typography.Title>
-                <Typography.Paragraph type="secondary">
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
                     {novel.author || 'Không rõ tác giả'}
                     {novel.url ? (
                         <>
@@ -146,9 +146,13 @@ export function NovelDetailPage() {
                         </>
                     ) : null}
                 </Typography.Paragraph>
-                {novel.summary ? <Typography.Paragraph>{novel.summary}</Typography.Paragraph> : null}
+                {novel.summary ? (
+                    <Typography.Paragraph ellipsis={{ rows: 2, expandable: 'collapsible' }} type="secondary" style={{ marginBottom: 12 }}>
+                        {novel.summary}
+                    </Typography.Paragraph>
+                ) : null}
 
-                <Row gutter={[16, 16]}>
+                <Row gutter={[12, 12]}>
                     <Col xs={12} md={6}>
                         <Statistic title="Tổng chương" value={stats?.total ?? '—'} loading={statsQuery.isLoading} />
                     </Col>
@@ -168,8 +172,8 @@ export function NovelDetailPage() {
                 </Row>
             </Card>
 
-            <Card title="Mục lục">
-                <Space wrap style={{ marginBottom: 16 }}>
+            <Card size="small" title="Mục lục">
+                <Space wrap style={{ marginBottom: 12 }}>
                     <Select
                         allowClear
                         placeholder="Lọc crawl"
@@ -199,6 +203,7 @@ export function NovelDetailPage() {
                 ) : (
                     <Table<ChapterListItem>
                         rowKey="id"
+                        size="small"
                         columns={columns}
                         dataSource={chaptersQuery.data?.data}
                         loading={chaptersQuery.isFetching}

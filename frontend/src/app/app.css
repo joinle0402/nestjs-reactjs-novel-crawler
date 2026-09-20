@@ -5,6 +5,11 @@ body,
     min-height: 100%;
 }
 
+/* Keep sider collapse trigger aligned when HealthBadge sits in footer */
+.ant-layout-sider-trigger {
+    border-top: 1px solid #f0f0f0;
+}
+
 a {
     color: inherit;
 }

@@ -44,7 +44,7 @@ export function ChapterReaderPage() {
         <Space orientation="vertical" size={16} style={{ width: '100%' }}>
             <Breadcrumb
                 items={[
-                    { title: <Link to="/">Truyện</Link> },
+                    { title: <Link to="/">Dashboard</Link> },
                     { title: <Link to={parentPath}>{novelTitle}</Link> },
                     { title: `Chương ${chapter.chapterNumber}` },
                 ]}
