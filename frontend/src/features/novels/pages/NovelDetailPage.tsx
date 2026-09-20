@@ -1,5 +1,6 @@
-import { Alert, Breadcrumb, Card, Col, Empty, Row, Select, Space, Spin, Statistic, Switch, Table, Tag, Typography } from 'antd';
+import { Alert, Breadcrumb, Button, Card, Col, Empty, Row, Select, Space, Spin, Statistic, Switch, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { CaretRightOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
 import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
@@ -10,8 +11,9 @@ import { JobStatusTag } from '@/shared/ui/JobStatusTag.tsx';
 import { JOB_STATUS_OPTIONS, JobStatus, type JobStatus as JobStatusValue } from '@/shared/types/jobStatus.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { parseRouteId } from '@/shared/lib/parseRouteId.ts';
+import { useAudioPlayer } from '@/features/audio/AudioPlayerContext.tsx';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 12;
 
 function readStatusParam(value: string | null): JobStatusValue | undefined {
     if (!value) {
@@ -35,6 +37,7 @@ export function NovelDetailPage() {
     const novelId = parseRouteId(novelIdParam);
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
+    const { playChapter, resumeNovel, track, status } = useAudioPlayer();
 
     const page = Math.max(1, Number(searchParams.get('page') ?? 1) || 1);
     const crawlStatus = readStatusParam(searchParams.get('crawlStatus'));
@@ -87,19 +90,43 @@ export function NovelDetailPage() {
             title: 'Crawl',
             dataIndex: 'crawlStatus',
             width: 120,
-            render: (status: JobStatusValue) => <JobStatusTag status={status} />,
+            render: (statusValue: JobStatusValue) => <JobStatusTag status={statusValue} />,
         },
         {
             title: 'TTS',
             dataIndex: 'ttsStatus',
             width: 120,
-            render: (status: JobStatusValue) => <JobStatusTag status={status} />,
+            render: (statusValue: JobStatusValue) => <JobStatusTag status={statusValue} />,
         },
         {
             title: 'MP3',
             dataIndex: 'hasMp3',
             width: 90,
             render: (value: boolean) => (value ? <Tag color="green">Có</Tag> : <Tag>Chưa</Tag>),
+        },
+        {
+            title: '',
+            key: 'listen',
+            width: 100,
+            render: (_, chapter) =>
+                chapter.hasMp3 && novelId && novelQuery.data ? (
+                    <Button
+                        type="link"
+                        size="small"
+                        icon={<CaretRightOutlined />}
+                        loading={status === 'loading' && track?.chapterId === chapter.id}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            void playChapter({
+                                novelId,
+                                novelTitle: novelQuery.data.title,
+                                chapterId: chapter.id,
+                            });
+                        }}
+                    >
+                        Nghe
+                    </Button>
+                ) : null,
         },
     ];
 
@@ -130,49 +157,19 @@ export function NovelDetailPage() {
                     { title: novel.title },
                 ]}
             />
-
-            <Card size="small">
-                <Typography.Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>
-                    {novel.title}
-                </Typography.Title>
-                <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-                    {novel.author || 'Không rõ tác giả'}
-                    {novel.url ? (
-                        <>
-                            {' · '}
-                            <Typography.Link href={novel.url} target="_blank" rel="noreferrer">
-                                Nguồn
-                            </Typography.Link>
-                        </>
-                    ) : null}
-                </Typography.Paragraph>
-                {novel.summary ? (
-                    <Typography.Paragraph ellipsis={{ rows: 2, expandable: 'collapsible' }} type="secondary" style={{ marginBottom: 12 }}>
-                        {novel.summary}
-                    </Typography.Paragraph>
-                ) : null}
-
-                <Row gutter={[12, 12]}>
-                    <Col xs={12} md={6}>
-                        <Statistic title="Tổng chương" value={stats?.total ?? '—'} loading={statsQuery.isLoading} />
-                    </Col>
-                    <Col xs={12} md={6}>
-                        <Statistic title="Đã crawl" value={stats?.crawled ?? '—'} loading={statsQuery.isLoading} />
-                    </Col>
-                    <Col xs={12} md={6}>
-                        <Statistic title="Đã TTS" value={stats?.ttsDone ?? '—'} loading={statsQuery.isLoading} />
-                    </Col>
-                    <Col xs={12} md={6}>
-                        <Statistic
-                            title="Lỗi crawl / TTS"
-                            value={stats ? `${stats.crawlFailed} / ${stats.ttsFailed}` : '—'}
-                            loading={statsQuery.isLoading}
-                        />
-                    </Col>
-                </Row>
-            </Card>
-
-            <Card size="small" title="Mục lục">
+            <Card
+                size="small"
+                title={
+                    <>
+                        {novel.title}{' '}
+                        <Typography.Link href={novel.url} target="_blank" rel="noreferrer" style={{ fontWeight: 'normal', fontSize: 13 }}>
+                            (Nguồn)
+                        </Typography.Link>
+                        {' - '}
+                        {novel.author || 'Không rõ tác giả'} - {stats?.total} chương | {stats?.crawled} đã crawl | {stats?.ttsDone} đã TTS | {stats?.crawlFailed} lỗi crawl / {stats?.ttsFailed} lỗi TTS
+                    </>
+                }
+            >
                 <Space wrap style={{ marginBottom: 12 }}>
                     <Select
                         allowClear
@@ -219,7 +216,7 @@ export function NovelDetailPage() {
                             style: { cursor: 'pointer' },
                             onClick: () => navigate(`/novels/${novelId}/chapters/${chapter.id}`),
                         })}
-                        scroll={{ x: 720 }}
+                        scroll={{ x: 820 }}
                     />
                 )}
             </Card>

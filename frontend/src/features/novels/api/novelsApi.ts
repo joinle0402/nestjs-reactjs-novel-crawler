@@ -32,8 +32,21 @@ export type NovelStats = NovelStatsCounts & {
     title: string;
 };
 
+export type PlaybackState = {
+    novelId: number;
+    chapterNumber: number;
+    positionSec: number;
+    updatedAt: string;
+};
+
 export const getNovels = () => axiosClient.get<NovelListItem[]>('/novels');
 
 export const getNovel = (id: number) => axiosClient.get<Novel>(`/novels/${id}`);
 
 export const getNovelStats = (id: number) => axiosClient.get<NovelStats>(`/novels/${id}/stats`);
+
+export const getPlayback = (novelId: number) =>
+    axiosClient.get<PlaybackState | null>(`/novels/${novelId}/playback`);
+
+export const upsertPlayback = (novelId: number, body: { chapterNumber: number; positionSec: number }) =>
+    axiosClient.put<PlaybackState>(`/novels/${novelId}/playback`, body);

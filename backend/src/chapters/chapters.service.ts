@@ -28,13 +28,13 @@ export class ChaptersService {
         @InjectRepository(Chapter)
         private readonly chaptersRepository: Repository<Chapter>,
         private readonly novelsService: NovelsService,
-    ) {}
+    ) { }
 
     async findByNovel(novelId: number, query: ListChaptersQuery): Promise<PaginatedResponse<ChapterListItem>> {
         await this.novelsService.findOne(novelId);
 
         const page = query.page ?? 1;
-        const limit = query.limit ?? 50;
+        const limit = query.limit ?? 15;
 
         const qb = this.chaptersRepository
             .createQueryBuilder('chapter')
@@ -102,6 +102,24 @@ export class ChaptersService {
         };
     }
 
+    async findByNovelAndNumber(novelId: number, chapterNumber: number): Promise<ChapterDetailResponse> {
+        const model = await this.chaptersRepository.findOne({
+            where: { novelId, chapterNumber },
+        });
+        throwUnless(model, `Không tìm thấy chương ${chapterNumber} của truyện ${novelId}`, HttpStatus.NOT_FOUND);
+        return this.findById(model.id);
+    }
+
+    async getMp3Path(id: number): Promise<{ id: number; mp3Path: string }> {
+        const model = await this.chaptersRepository.findOne({
+            where: { id },
+            select: { id: true, mp3Path: true },
+        });
+        throwUnless(model, `Không tìm thấy chương với id ${id}`, HttpStatus.NOT_FOUND);
+        throwUnless(model.mp3Path, 'Chương chưa có file MP3', HttpStatus.NOT_FOUND);
+        return { id: model.id, mp3Path: model.mp3Path };
+    }
+
     private async findNeighbor(chapter: Chapter, direction: 'prev' | 'next'): Promise<ChapterNeighbor | null> {
         const neighbor = await this.chaptersRepository.findOne({
             where: {
@@ -109,7 +127,7 @@ export class ChaptersService {
                 chapterNumber: direction === 'prev' ? LessThan(chapter.chapterNumber) : MoreThan(chapter.chapterNumber),
             },
             order: { chapterNumber: direction === 'prev' ? 'DESC' : 'ASC' },
-            select: { id: true, chapterNumber: true, title: true },
+            select: { id: true, chapterNumber: true, title: true, mp3Path: true },
         });
         if (!neighbor) {
             return null;
@@ -118,6 +136,7 @@ export class ChaptersService {
             id: neighbor.id,
             chapterNumber: neighbor.chapterNumber,
             title: neighbor.title,
+            hasMp3: Boolean(neighbor.mp3Path),
         };
     }
 

@@ -1,5 +1,5 @@
 import { Alert, Breadcrumb, Button, Card, Result, Space, Spin, Tag, Typography } from 'antd';
-import { LeftOutlined, RightOutlined, SoundOutlined } from '@ant-design/icons';
+import { CaretRightOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useChapterQuery } from '@/features/chapters/hooks/useChapterQuery.ts';
 import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
@@ -7,12 +7,14 @@ import { JobStatusTag } from '@/shared/ui/JobStatusTag.tsx';
 import { JobStatus } from '@/shared/types/jobStatus.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { parseRouteId } from '@/shared/lib/parseRouteId.ts';
+import { useAudioPlayer } from '@/features/audio/AudioPlayerContext.tsx';
 
 export function ChapterReaderPage() {
     const { novelId: novelIdParam, chapterId: chapterIdParam } = useParams();
     const novelId = parseRouteId(novelIdParam);
     const chapterId = parseRouteId(chapterIdParam);
     const navigate = useNavigate();
+    const { playChapter, track, status, togglePlay } = useAudioPlayer();
 
     const chapterQuery = useChapterQuery(chapterId);
     const novelQuery = useNovelQuery(chapterQuery.data?.novelId ?? novelId);
@@ -37,8 +39,22 @@ export function ChapterReaderPage() {
     const novelTitle = novelQuery.data?.title ?? 'Truyện';
     const parentPath = `/novels/${chapter.novelId}`;
     const hasContent = Boolean(chapter.content?.trim()) && chapter.crawlStatus === JobStatus.COMPLETED;
+    const isCurrentTrack = track?.chapterId === chapter.id;
+    const isPlayingThis = isCurrentTrack && (status === 'playing' || status === 'loading');
 
     const goTo = (id: number) => navigate(`/novels/${chapter.novelId}/chapters/${id}`);
+
+    const onListen = () => {
+        if (isCurrentTrack) {
+            togglePlay();
+            return;
+        }
+        void playChapter({
+            novelId: chapter.novelId,
+            novelTitle,
+            chapterId: chapter.id,
+        });
+    };
 
     return (
         <Space orientation="vertical" size={16} style={{ width: '100%' }}>
@@ -61,14 +77,18 @@ export function ChapterReaderPage() {
                 </Typography.Title>
 
                 {chapter.hasMp3 ? (
-                    <Alert
-                        type="info"
-                        showIcon
-                        icon={<SoundOutlined />}
+                    <Button
+                        type="primary"
+                        icon={<CaretRightOutlined />}
+                        loading={status === 'loading' && isCurrentTrack}
+                        onClick={onListen}
                         style={{ marginBottom: 16 }}
-                        title="Đã có file MP3 trên máy / Drive. Nghe trên web sẽ làm ở bước sau."
-                    />
-                ) : null}
+                    >
+                        {isPlayingThis ? 'Tạm dừng' : isCurrentTrack ? 'Tiếp tục' : 'Nghe chương này'}
+                    </Button>
+                ) : (
+                    <Alert type="info" showIcon style={{ marginBottom: 16 }} title="Chương này chưa có file MP3." />
+                )}
 
                 {hasContent ? (
                     <article className="chapter-content">{chapter.content}</article>

@@ -2,12 +2,16 @@ import { useState } from 'react';
 import { Layout, Menu, Typography } from 'antd';
 import { BookOutlined, DashboardOutlined, ReadOutlined } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { BottomPlayer } from '@/features/audio/BottomPlayer.tsx';
+import { useAudioPlayer } from '@/features/audio/AudioPlayerContext.tsx';
+
 const { Sider, Content } = Layout;
 
 export function MainLayout() {
     const [collapsed, setCollapsed] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
+    const { track } = useAudioPlayer();
 
     const isHome = location.pathname === '/';
     const selectedKeys = isHome ? ['dashboard', 'novels'] : [];
@@ -99,9 +103,13 @@ export function MainLayout() {
             </Sider>
 
             <Layout>
-                <Content style={{ padding: 16, background: '#f5f5f5', minHeight: '100vh' }}>
+                <Content
+                    className={track ? 'layout-with-player' : undefined}
+                    style={{ padding: 16, background: '#f5f5f5', minHeight: '100vh' }}
+                >
                     <Outlet />
                 </Content>
+                <BottomPlayer siderWidth={collapsed ? 64 : 220} />
             </Layout>
         </Layout>
     );

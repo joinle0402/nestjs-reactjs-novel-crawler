@@ -10,6 +10,9 @@ export class ChapterNeighbor {
 
     @ApiProperty()
     title!: string;
+
+    @ApiProperty({ description: 'Chapter kế bên đã có mp3_path' })
+    hasMp3!: boolean;
 }
 
 export class ChapterDetailResponse {

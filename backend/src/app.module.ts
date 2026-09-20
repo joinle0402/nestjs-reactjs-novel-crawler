@@ -10,6 +10,7 @@ import { ChaptersModule } from './chapters/chapters.module';
 import { Chapter } from './chapters/chapters.entity';
 import { PlaybackState } from './novels/entities/playback-state.entity';
 import { SqlQueryLogger } from './common/logging/sql-query.logger';
+import { AudiosModule } from './audios/audios.module';
 
 @Module({
     imports: [
@@ -44,6 +45,7 @@ import { SqlQueryLogger } from './common/logging/sql-query.logger';
 
         NovelsModule,
         ChaptersModule,
+        AudiosModule,
     ],
     controllers: [AppController],
     providers: [AppService],

@@ -52,6 +52,14 @@ export function DashboardPage() {
 
     const columns: ColumnsType<NovelListItem> = [
         {
+            title: '#',
+            key: 'STT',
+            width: 60,
+            align: 'right',
+            render: (_text, _record, index) => index + 1,
+        },
+   
+        {
             title: 'Truyện',
             dataIndex: 'title',
             ellipsis: true,
@@ -131,29 +139,6 @@ export function DashboardPage() {
             <Typography.Title level={4} style={{ margin: 0 }}>
                 Dashboard
             </Typography.Title>
-
-            <Row gutter={[12, 12]}>
-                <Col xs={12} sm={6}>
-                    <Card size="small">
-                        <Statistic title="Tổng truyện" value={aggregates.novels} />
-                    </Card>
-                </Col>
-                <Col xs={12} sm={6}>
-                    <Card size="small">
-                        <Statistic title="Tổng chương" value={aggregates.chapters} />
-                    </Card>
-                </Col>
-                <Col xs={12} sm={6}>
-                    <Card size="small">
-                        <Statistic title="Crawl" value={percent(aggregates.crawled, aggregates.chapters)} suffix="%" />
-                    </Card>
-                </Col>
-                <Col xs={12} sm={6}>
-                    <Card size="small">
-                        <Statistic title="TTS" value={percent(aggregates.ttsDone, aggregates.chapters)} suffix="%" />
-                    </Card>
-                </Col>
-            </Row>
 
             <Card
                 id="novels-table"

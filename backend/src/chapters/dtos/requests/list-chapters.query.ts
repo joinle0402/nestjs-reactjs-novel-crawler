@@ -26,7 +26,7 @@ export class ListChaptersQuery {
     @IsInt()
     @Min(1)
     @Max(200)
-    @ApiPropertyOptional({ default: 50, maximum: 200 })
+    @ApiPropertyOptional({ default: 15, maximum: 200 })
     limit?: number;
 
     @IsOptional()

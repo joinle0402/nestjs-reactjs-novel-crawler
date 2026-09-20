@@ -19,6 +19,7 @@ export type ChapterNeighbor = {
     id: number;
     chapterNumber: number;
     title: string;
+    hasMp3: boolean;
 };
 
 export type ChapterDetail = {
@@ -65,3 +66,12 @@ export const getChaptersByNovel = (novelId: number, params: ListChaptersParams =
     axiosClient.get<PaginatedChapters>(`/chapters/novel/${novelId}`, { params });
 
 export const getChapter = (id: number) => axiosClient.get<ChapterDetail>(`/chapters/${id}`);
+
+export const getChapterByNumber = (novelId: number, chapterNumber: number) =>
+    axiosClient.get<ChapterDetail>(`/chapters/novel/${novelId}/number/${chapterNumber}`);
+
+/** URL stream MP3 — dùng trực tiếp cho thẻ audio (qua Vite proxy hoặc API tuyệt đối). */
+export function getChapterAudioUrl(chapterId: number): string {
+    const base = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api/v1';
+    return `${base.replace(/\/$/, '')}/audios/chapters/${chapterId}`;
+}
