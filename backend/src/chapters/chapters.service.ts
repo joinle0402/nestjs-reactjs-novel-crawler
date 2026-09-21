@@ -1,10 +1,12 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Chapter } from './chapters.entity';
-import { LessThan, MoreThan, Repository } from 'typeorm';
+import { LessThan, MoreThan, Not, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NovelsService } from 'src/novels/novels.service';
-import { throwUnless } from 'src/common/utils/throw-if';
+import { throwIf, throwUnless } from 'src/common/utils/throw-if';
 import { ListChaptersQuery } from './dtos/requests/list-chapters.query';
+import { CreateChapterRequest } from './dtos/requests/create-chapter.request';
+import { UpdateChapterRequest } from './dtos/requests/update-chapter.request';
 import { paginated, PaginatedResponse } from 'src/common/dtos/paginated.response';
 import { ChapterDetailResponse, ChapterNeighbor } from './dtos/responses/chapter-detail.response';
 
@@ -108,6 +110,65 @@ export class ChaptersService {
         });
         throwUnless(model, `Không tìm thấy chương ${chapterNumber} của truyện ${novelId}`, HttpStatus.NOT_FOUND);
         return this.findById(model.id);
+    }
+
+    async create(request: CreateChapterRequest): Promise<ChapterDetailResponse> {
+        await this.novelsService.findOne(request.novelId);
+
+        const chapterSiteId = (request.chapterSiteId?.trim() || String(request.chapterNumber)).slice(0, 191);
+        await this.assertSiteIdAvailable(request.novelId, chapterSiteId);
+
+        const model = this.chaptersRepository.create({
+            novelId: request.novelId,
+            chapterSiteId,
+            chapterNumber: request.chapterNumber,
+            title: request.title.trim(),
+            content: request.content ?? null,
+        });
+        const saved = await this.chaptersRepository.save(model);
+        return this.findById(saved.id);
+    }
+
+    async update(id: number, request: UpdateChapterRequest): Promise<ChapterDetailResponse> {
+        const model = await this.chaptersRepository.findOne({ where: { id } });
+        throwUnless(model, `Không tìm thấy chương với id ${id}`, HttpStatus.NOT_FOUND);
+
+        if (request.chapterSiteId !== undefined) {
+            const chapterSiteId = request.chapterSiteId.trim().slice(0, 191);
+            throwUnless(chapterSiteId, 'chapterSiteId không được để trống', HttpStatus.BAD_REQUEST);
+            await this.assertSiteIdAvailable(model.novelId, chapterSiteId, id);
+            model.chapterSiteId = chapterSiteId;
+        }
+        if (request.chapterNumber !== undefined) {
+            model.chapterNumber = request.chapterNumber;
+        }
+        if (request.title !== undefined) {
+            model.title = request.title.trim();
+        }
+        if (request.content !== undefined) {
+            model.content = request.content;
+        }
+
+        await this.chaptersRepository.save(model);
+        return this.findById(id);
+    }
+
+    async delete(id: number): Promise<void> {
+        const model = await this.chaptersRepository.findOne({ where: { id } });
+        throwUnless(model, `Không tìm thấy chương với id ${id}`, HttpStatus.NOT_FOUND);
+        await this.chaptersRepository.remove(model);
+    }
+
+    private async assertSiteIdAvailable(novelId: number, chapterSiteId: string, excludeId?: number): Promise<void> {
+        const existing = await this.chaptersRepository.findOne({
+            where: {
+                novelId,
+                chapterSiteId,
+                ...(excludeId ? { id: Not(excludeId) } : {}),
+            },
+            select: { id: true },
+        });
+        throwIf(existing, `Chương với chapterSiteId "${chapterSiteId}" đã tồn tại trong truyện này`, HttpStatus.CONFLICT);
     }
 
     async getMp3Path(id: number): Promise<{ id: number; mp3Path: string }> {

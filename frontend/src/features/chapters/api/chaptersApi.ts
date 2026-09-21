@@ -62,6 +62,21 @@ export type ListChaptersParams = {
     hasMp3?: boolean;
 };
 
+export type CreateChapterBody = {
+    novelId: number;
+    chapterSiteId?: string;
+    chapterNumber: number;
+    title: string;
+    content?: string;
+};
+
+export type UpdateChapterBody = {
+    chapterSiteId?: string;
+    chapterNumber?: number;
+    title?: string;
+    content?: string | null;
+};
+
 export const getChaptersByNovel = (novelId: number, params: ListChaptersParams = {}) =>
     axiosClient.get<PaginatedChapters>(`/chapters/novel/${novelId}`, { params });
 
@@ -69,6 +84,14 @@ export const getChapter = (id: number) => axiosClient.get<ChapterDetail>(`/chapt
 
 export const getChapterByNumber = (novelId: number, chapterNumber: number) =>
     axiosClient.get<ChapterDetail>(`/chapters/novel/${novelId}/number/${chapterNumber}`);
+
+export const createChapter = (body: CreateChapterBody) =>
+    axiosClient.post<ChapterDetail>('/chapters', body);
+
+export const updateChapter = (id: number, body: UpdateChapterBody) =>
+    axiosClient.put<ChapterDetail>(`/chapters/${id}`, body);
+
+export const deleteChapter = (id: number) => axiosClient.delete<void>(`/chapters/${id}`);
 
 /** URL stream MP3 — dùng trực tiếp cho thẻ audio (qua Vite proxy hoặc API tuyệt đối). */
 export function getChapterAudioUrl(chapterId: number): string {

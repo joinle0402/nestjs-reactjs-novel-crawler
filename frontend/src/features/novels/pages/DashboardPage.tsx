@@ -1,8 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Alert, Card, Col, Empty, Input, Progress, Row, Space, Spin, Statistic, Table, Typography } from 'antd';
+import { Alert, Button, Card, Empty, Input, Modal, Progress, Space, Spin, Table, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useNovelsQuery } from '@/features/novels/hooks/useNovelsQuery.ts';
+import {
+    useCreateNovelMutation,
+    useDeleteNovelMutation,
+    useUpdateNovelMutation,
+} from '@/features/novels/hooks/useNovelMutations.ts';
+import { NovelFormModal, type NovelFormValues } from '@/features/novels/components/NovelFormModal.tsx';
 import type { NovelListItem } from '@/features/novels/api/novelsApi.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 
@@ -16,25 +23,12 @@ function percent(done: number, total: number): number {
 export function DashboardPage() {
     const navigate = useNavigate();
     const { data, isLoading, isError, error } = useNovelsQuery();
+    const createMutation = useCreateNovelMutation();
+    const updateMutation = useUpdateNovelMutation();
+    const deleteMutation = useDeleteNovelMutation();
     const [search, setSearch] = useState('');
-
-    const aggregates = useMemo(() => {
-        if (!data?.length) {
-            return { novels: 0, chapters: 0, crawled: 0, ttsDone: 0, crawlFailed: 0, ttsFailed: 0 };
-        }
-        return data.reduce(
-            (acc, novel) => {
-                acc.novels += 1;
-                acc.chapters += novel.stats.total;
-                acc.crawled += novel.stats.crawled;
-                acc.ttsDone += novel.stats.ttsDone;
-                acc.crawlFailed += novel.stats.crawlFailed;
-                acc.ttsFailed += novel.stats.ttsFailed;
-                return acc;
-            },
-            { novels: 0, chapters: 0, crawled: 0, ttsDone: 0, crawlFailed: 0, ttsFailed: 0 },
-        );
-    }, [data]);
+    const [formOpen, setFormOpen] = useState(false);
+    const [editing, setEditing] = useState<NovelListItem | null>(null);
 
     const filtered = useMemo(() => {
         if (!data) {
@@ -50,6 +44,72 @@ export function DashboardPage() {
         );
     }, [data, search]);
 
+    const openCreate = () => {
+        setEditing(null);
+        setFormOpen(true);
+    };
+
+    const openEdit = (novel: NovelListItem) => {
+        setEditing(novel);
+        setFormOpen(true);
+    };
+
+    const closeForm = () => {
+        setFormOpen(false);
+        setEditing(null);
+    };
+
+    const handleSubmit = (values: NovelFormValues) => {
+        const body = {
+            url: values.url.trim(),
+            title: values.title.trim(),
+            author: values.author?.trim() || undefined,
+            summary: values.summary?.trim() || undefined,
+        };
+
+        if (editing) {
+            updateMutation.mutate(
+                { id: editing.id, body },
+                {
+                    onSuccess: () => {
+                        message.success('Đã cập nhật truyện');
+                        closeForm();
+                    },
+                    onError: (err) => message.error(getErrorMessage(err, 'Cập nhật truyện thất bại')),
+                },
+            );
+            return;
+        }
+
+        createMutation.mutate(body, {
+            onSuccess: () => {
+                message.success('Đã thêm truyện');
+                closeForm();
+            },
+            onError: (err) => message.error(getErrorMessage(err, 'Thêm truyện thất bại')),
+        });
+    };
+
+    const handleDelete = (novel: NovelListItem) => {
+        Modal.confirm({
+            title: 'Xóa truyện?',
+            content: `Xóa "${novel.title}" và toàn bộ chương liên quan. Không thể hoàn tác.`,
+            okText: 'Xóa',
+            okType: 'danger',
+            cancelText: 'Hủy',
+            onOk: () =>
+                deleteMutation.mutateAsync(novel.id).then(
+                    () => {
+                        message.success('Đã xóa truyện');
+                    },
+                    (err) => {
+                        message.error(getErrorMessage(err, 'Xóa truyện thất bại'));
+                        return Promise.reject(err);
+                    },
+                ),
+        });
+    };
+
     const columns: ColumnsType<NovelListItem> = [
         {
             title: '#',
@@ -58,7 +118,6 @@ export function DashboardPage() {
             align: 'right',
             render: (_text, _record, index) => index + 1,
         },
-   
         {
             title: 'Truyện',
             dataIndex: 'title',
@@ -120,6 +179,31 @@ export function DashboardPage() {
                 );
             },
         },
+        {
+            title: '',
+            key: 'actions',
+            width: 96,
+            fixed: 'right',
+            render: (_, novel) => (
+                <Space size={0} onClick={(event) => event.stopPropagation()}>
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={<EditOutlined />}
+                        aria-label="Sửa truyện"
+                        onClick={() => openEdit(novel)}
+                    />
+                    <Button
+                        type="text"
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        aria-label="Xóa truyện"
+                        onClick={() => handleDelete(novel)}
+                    />
+                </Space>
+            ),
+        },
     ];
 
     if (isLoading) {
@@ -145,17 +229,26 @@ export function DashboardPage() {
                 size="small"
                 title="Danh sách truyện"
                 extra={
-                    <Input.Search
-                        allowClear
-                        placeholder="Tìm theo tên / tác giả"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        style={{ width: 240 }}
-                    />
+                    <Space wrap>
+                        <Input.Search
+                            allowClear
+                            placeholder="Tìm theo tên / tác giả"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            style={{ width: 240 }}
+                        />
+                        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                            Thêm truyện
+                        </Button>
+                    </Space>
                 }
             >
                 {!data?.length ? (
-                    <Empty description="Chưa có truyện. Cào bằng Python worker rồi tải lại trang." />
+                    <Empty description="Chưa có truyện.">
+                        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                            Thêm truyện
+                        </Button>
+                    </Empty>
                 ) : (
                     <Table<NovelListItem>
                         rowKey="id"
@@ -172,10 +265,18 @@ export function DashboardPage() {
                             style: { cursor: 'pointer' },
                             onClick: () => navigate(`/novels/${novel.id}`),
                         })}
-                        scroll={{ x: 720 }}
+                        scroll={{ x: 820 }}
                     />
                 )}
             </Card>
+
+            <NovelFormModal
+                open={formOpen}
+                novel={editing}
+                confirmLoading={createMutation.isPending || updateMutation.isPending}
+                onCancel={closeForm}
+                onSubmit={handleSubmit}
+            />
         </Space>
     );
 }

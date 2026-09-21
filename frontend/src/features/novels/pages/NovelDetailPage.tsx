@@ -1,11 +1,32 @@
-import { Alert, Breadcrumb, Button, Card, Col, Empty, Row, Select, Space, Spin, Statistic, Switch, Table, Tag, Typography } from 'antd';
+import {
+    Alert,
+    Breadcrumb,
+    Button,
+    Card,
+    Empty,
+    Modal,
+    Select,
+    Space,
+    Spin,
+    Switch,
+    Table,
+    Tag,
+    Typography,
+    message,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { CaretRightOutlined } from '@ant-design/icons';
+import { CaretRightOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
 import { useNovelStatsQuery } from '@/features/novels/hooks/useNovelStatsQuery.ts';
 import { useChaptersQuery } from '@/features/chapters/hooks/useChaptersQuery.ts';
+import {
+    useCreateChapterMutation,
+    useDeleteChapterMutation,
+    useUpdateChapterMutation,
+} from '@/features/chapters/hooks/useChapterMutations.ts';
+import { ChapterFormModal, type ChapterFormValues } from '@/features/chapters/components/ChapterFormModal.tsx';
 import type { ChapterListItem, ListChaptersParams } from '@/features/chapters/api/chaptersApi.ts';
 import { JobStatusTag } from '@/shared/ui/JobStatusTag.tsx';
 import { JOB_STATUS_OPTIONS, JobStatus, type JobStatus as JobStatusValue } from '@/shared/types/jobStatus.ts';
@@ -37,7 +58,13 @@ export function NovelDetailPage() {
     const novelId = parseRouteId(novelIdParam);
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const { playChapter, resumeNovel, track, status } = useAudioPlayer();
+    const { playChapter, track, status } = useAudioPlayer();
+    const [formOpen, setFormOpen] = useState(false);
+    const [editing, setEditing] = useState<ChapterListItem | null>(null);
+
+    const createMutation = useCreateChapterMutation();
+    const updateMutation = useUpdateChapterMutation();
+    const deleteMutation = useDeleteChapterMutation();
 
     const page = Math.max(1, Number(searchParams.get('page') ?? 1) || 1);
     const crawlStatus = readStatusParam(searchParams.get('crawlStatus'));
@@ -74,6 +101,89 @@ export function NovelDetailPage() {
         setSearchParams(next);
     };
 
+    const openCreate = () => {
+        setEditing(null);
+        setFormOpen(true);
+    };
+
+    const openEdit = (chapter: ChapterListItem) => {
+        setEditing(chapter);
+        setFormOpen(true);
+    };
+
+    const closeForm = () => {
+        setFormOpen(false);
+        setEditing(null);
+    };
+
+    const handleSubmit = (values: ChapterFormValues) => {
+        if (!novelId) {
+            return;
+        }
+
+        const content = values.content?.trim();
+        const chapterSiteId = values.chapterSiteId?.trim() || undefined;
+
+        if (editing) {
+            updateMutation.mutate(
+                {
+                    id: editing.id,
+                    body: {
+                        chapterNumber: values.chapterNumber,
+                        title: values.title.trim(),
+                        chapterSiteId,
+                        ...(content !== undefined && content !== '' ? { content } : {}),
+                    },
+                },
+                {
+                    onSuccess: () => {
+                        message.success('Đã cập nhật chương');
+                        closeForm();
+                    },
+                    onError: (err) => message.error(getErrorMessage(err, 'Cập nhật chương thất bại')),
+                },
+            );
+            return;
+        }
+
+        createMutation.mutate(
+            {
+                novelId,
+                chapterNumber: values.chapterNumber,
+                title: values.title.trim(),
+                chapterSiteId,
+                content: content || undefined,
+            },
+            {
+                onSuccess: () => {
+                    message.success('Đã thêm chương');
+                    closeForm();
+                },
+                onError: (err) => message.error(getErrorMessage(err, 'Thêm chương thất bại')),
+            },
+        );
+    };
+
+    const handleDelete = (chapter: ChapterListItem) => {
+        Modal.confirm({
+            title: 'Xóa chương?',
+            content: `Xóa "${chapter.title}". Không thể hoàn tác.`,
+            okText: 'Xóa',
+            okType: 'danger',
+            cancelText: 'Hủy',
+            onOk: () =>
+                deleteMutation.mutateAsync({ id: chapter.id, novelId: chapter.novelId }).then(
+                    () => {
+                        message.success('Đã xóa chương');
+                    },
+                    (err) => {
+                        message.error(getErrorMessage(err, 'Xóa chương thất bại'));
+                        return Promise.reject(err);
+                    },
+                ),
+        });
+    };
+
     const columns: ColumnsType<ChapterListItem> = [
         {
             title: '#',
@@ -106,27 +216,45 @@ export function NovelDetailPage() {
         },
         {
             title: '',
-            key: 'listen',
-            width: 100,
-            render: (_, chapter) =>
-                chapter.hasMp3 && novelId && novelQuery.data ? (
+            key: 'actions',
+            width: 160,
+            fixed: 'right',
+            render: (_, chapter) => (
+                <Space size={0} onClick={(event) => event.stopPropagation()}>
+                    {chapter.hasMp3 && novelId && novelQuery.data ? (
+                        <Button
+                            type="link"
+                            size="small"
+                            icon={<CaretRightOutlined />}
+                            loading={status === 'loading' && track?.chapterId === chapter.id}
+                            onClick={() => {
+                                void playChapter({
+                                    novelId,
+                                    novelTitle: novelQuery.data.title,
+                                    chapterId: chapter.id,
+                                });
+                            }}
+                        >
+                            Nghe
+                        </Button>
+                    ) : null}
                     <Button
-                        type="link"
+                        type="text"
                         size="small"
-                        icon={<CaretRightOutlined />}
-                        loading={status === 'loading' && track?.chapterId === chapter.id}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            void playChapter({
-                                novelId,
-                                novelTitle: novelQuery.data.title,
-                                chapterId: chapter.id,
-                            });
-                        }}
-                    >
-                        Nghe
-                    </Button>
-                ) : null,
+                        icon={<EditOutlined />}
+                        aria-label="Sửa chương"
+                        onClick={() => openEdit(chapter)}
+                    />
+                    <Button
+                        type="text"
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        aria-label="Xóa chương"
+                        onClick={() => handleDelete(chapter)}
+                    />
+                </Space>
+            ),
         },
     ];
 
@@ -166,8 +294,14 @@ export function NovelDetailPage() {
                             (Nguồn)
                         </Typography.Link>
                         {' - '}
-                        {novel.author || 'Không rõ tác giả'} - {stats?.total} chương | {stats?.crawled} đã crawl | {stats?.ttsDone} đã TTS | {stats?.crawlFailed} lỗi crawl / {stats?.ttsFailed} lỗi TTS
+                        {novel.author || 'Không rõ tác giả'} - {stats?.total} chương | {stats?.crawled} đã crawl |{' '}
+                        {stats?.ttsDone} đã TTS | {stats?.crawlFailed} lỗi crawl / {stats?.ttsFailed} lỗi TTS
                     </>
+                }
+                extra={
+                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                        Thêm chương
+                    </Button>
                 }
             >
                 <Space wrap style={{ marginBottom: 12 }}>
@@ -196,7 +330,11 @@ export function NovelDetailPage() {
                 {chaptersQuery.isError ? (
                     <Alert type="error" showIcon title="Không tải được mục lục" description={getErrorMessage(chaptersQuery.error)} />
                 ) : !chaptersQuery.isLoading && !chaptersQuery.data?.data.length ? (
-                    <Empty description="Không có chương phù hợp bộ lọc." />
+                    <Empty description="Không có chương phù hợp bộ lọc.">
+                        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                            Thêm chương
+                        </Button>
+                    </Empty>
                 ) : (
                     <Table<ChapterListItem>
                         rowKey="id"
@@ -216,10 +354,18 @@ export function NovelDetailPage() {
                             style: { cursor: 'pointer' },
                             onClick: () => navigate(`/novels/${novelId}/chapters/${chapter.id}`),
                         })}
-                        scroll={{ x: 820 }}
+                        scroll={{ x: 900 }}
                     />
                 )}
             </Card>
+
+            <ChapterFormModal
+                open={formOpen}
+                chapter={editing}
+                confirmLoading={createMutation.isPending || updateMutation.isPending}
+                onCancel={closeForm}
+                onSubmit={handleSubmit}
+            />
         </Space>
     );
 }
