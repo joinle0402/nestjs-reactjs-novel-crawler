@@ -21,6 +21,7 @@ import { useMemo, useState } from 'react';
 import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
 import { useNovelStatsQuery } from '@/features/novels/hooks/useNovelStatsQuery.ts';
 import { useChaptersQuery } from '@/features/chapters/hooks/useChaptersQuery.ts';
+import { useChapterQuery } from '@/features/chapters/hooks/useChapterQuery.ts';
 import {
     useCreateChapterMutation,
     useDeleteChapterMutation,
@@ -85,6 +86,7 @@ export function NovelDetailPage() {
     const novelQuery = useNovelQuery(novelId);
     const statsQuery = useNovelStatsQuery(novelId);
     const chaptersQuery = useChaptersQuery(novelId, chapterParams);
+    const editingDetailQuery = useChapterQuery(formOpen && editing ? editing.id : undefined);
 
     const updateFilters = (patch: Record<string, string | undefined>) => {
         const next = new URLSearchParams(searchParams);
@@ -125,6 +127,7 @@ export function NovelDetailPage() {
         const chapterSiteId = values.chapterSiteId?.trim() || undefined;
 
         if (editing) {
+            const trimmedContent = values.content?.trim() ?? '';
             updateMutation.mutate(
                 {
                     id: editing.id,
@@ -132,7 +135,7 @@ export function NovelDetailPage() {
                         chapterNumber: values.chapterNumber,
                         title: values.title.trim(),
                         chapterSiteId,
-                        ...(content !== undefined && content !== '' ? { content } : {}),
+                        content: trimmedContent || null,
                     },
                 },
                 {
@@ -361,7 +364,18 @@ export function NovelDetailPage() {
 
             <ChapterFormModal
                 open={formOpen}
-                chapter={editing}
+                mode={editing ? 'edit' : 'create'}
+                initial={
+                    editing
+                        ? {
+                              chapterNumber: editingDetailQuery.data?.chapterNumber ?? editing.chapterNumber,
+                              title: editingDetailQuery.data?.title ?? editing.title,
+                              chapterSiteId: editingDetailQuery.data?.chapterSiteId ?? editing.chapterSiteId,
+                              content: editingDetailQuery.data?.content,
+                          }
+                        : null
+                }
+                contentLoading={Boolean(editing) && editingDetailQuery.isLoading}
                 confirmLoading={createMutation.isPending || updateMutation.isPending}
                 onCancel={closeForm}
                 onSubmit={handleSubmit}

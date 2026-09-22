@@ -4,6 +4,7 @@ import { LessThan, MoreThan, Not, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NovelsService } from 'src/novels/novels.service';
 import { throwIf, throwUnless } from 'src/common/utils/throw-if';
+import { JobStatus } from 'src/common/enums/job-status.enum';
 import { ListChaptersQuery } from './dtos/requests/list-chapters.query';
 import { CreateChapterRequest } from './dtos/requests/create-chapter.request';
 import { UpdateChapterRequest } from './dtos/requests/update-chapter.request';
@@ -118,12 +119,14 @@ export class ChaptersService {
         const chapterSiteId = (request.chapterSiteId?.trim() || String(request.chapterNumber)).slice(0, 191);
         await this.assertSiteIdAvailable(request.novelId, chapterSiteId);
 
+        const content = this.normalizeContent(request.content);
         const model = this.chaptersRepository.create({
             novelId: request.novelId,
             chapterSiteId,
             chapterNumber: request.chapterNumber,
             title: request.title.trim(),
-            content: request.content ?? null,
+            content,
+            ...this.crawlFieldsForContent(content),
         });
         const saved = await this.chaptersRepository.save(model);
         return this.findById(saved.id);
@@ -146,11 +149,31 @@ export class ChaptersService {
             model.title = request.title.trim();
         }
         if (request.content !== undefined) {
-            model.content = request.content;
+            const content = this.normalizeContent(request.content);
+            model.content = content;
+            Object.assign(model, this.crawlFieldsForContent(content));
         }
 
         await this.chaptersRepository.save(model);
         return this.findById(id);
+    }
+
+    private normalizeContent(content: string | null | undefined): string | null {
+        if (content === undefined || content === null) {
+            return null;
+        }
+        const trimmed = content.trim();
+        return trimmed ? trimmed : null;
+    }
+
+    private crawlFieldsForContent(content: string | null): Partial<Pick<Chapter, 'crawlStatus' | 'crawledAt'>> {
+        if (!content) {
+            return {};
+        }
+        return {
+            crawlStatus: JobStatus.COMPLETED,
+            crawledAt: new Date(),
+        };
     }
 
     async delete(id: number): Promise<void> {

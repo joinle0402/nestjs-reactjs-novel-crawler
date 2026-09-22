@@ -38,7 +38,7 @@ export function ChapterReaderPage() {
     const chapter = chapterQuery.data;
     const novelTitle = novelQuery.data?.title ?? 'Truyện';
     const parentPath = `/novels/${chapter.novelId}`;
-    const hasContent = Boolean(chapter.content?.trim()) && chapter.crawlStatus === JobStatus.COMPLETED;
+    const hasContent = Boolean(chapter.content?.trim());
     const isCurrentTrack = track?.chapterId === chapter.id;
     const isPlayingThis = isCurrentTrack && (status === 'playing' || status === 'loading');
 
@@ -119,5 +119,11 @@ function EmptyState({ crawlStatus }: { crawlStatus: string }) {
     if (crawlStatus === JobStatus.PROCESSING) {
         return <Alert type="info" showIcon title="Đang cào chương này." />;
     }
-    return <Alert type="warning" showIcon title="Chưa có nội dung. Cào bằng Python worker rồi mở lại." />;
+    return (
+        <Alert
+            type="warning"
+            showIcon
+            title="Chưa có nội dung. Nhập tay từ mục lục (Sửa) hoặc cào bằng Python worker."
+        />
+    );
 }
