@@ -418,3 +418,25 @@ Traceback (most recent call last):
   File "C:\Users\ASUS\.pyenv\pyenv-win\versions\3.8.10\lib\site-packages\playwright\_impl\_connection.py", line 520, in wrap_api_call
     raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
 playwright._impl._errors.TargetClosedError: Page.goto: Target page, context or browser has been closed
+
+--- 2026-09-24T13:12:08.695519+00:00 ---
+Traceback (most recent call last):
+  File "C:\Users\ASUS\Desktop\workspace\project\novel-crawler\worker\crawler.py", line 1115, in main
+    crawl_novel(
+  File "C:\Users\ASUS\Desktop\workspace\project\novel-crawler\worker\crawler.py", line 678, in crawl_novel
+    return _crawl_novel(
+  File "C:\Users\ASUS\Desktop\workspace\project\novel-crawler\worker\crawler.py", line 973, in _crawl_novel
+    browser.close()
+  File "C:\Users\ASUS\.pyenv\pyenv-win\versions\3.8.10\lib\site-packages\playwright\sync_api\_generated.py", line 14213, in close
+    return mapping.from_maybe_impl(self._sync(self._impl_obj.close(reason=reason)))
+  File "C:\Users\ASUS\.pyenv\pyenv-win\versions\3.8.10\lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+  File "C:\Users\ASUS\.pyenv\pyenv-win\versions\3.8.10\lib\site-packages\playwright\_impl\_browser.py", line 192, in close
+    raise e
+  File "C:\Users\ASUS\.pyenv\pyenv-win\versions\3.8.10\lib\site-packages\playwright\_impl\_browser.py", line 189, in close
+    await self._channel.send("close", {"reason": reason})
+  File "C:\Users\ASUS\.pyenv\pyenv-win\versions\3.8.10\lib\site-packages\playwright\_impl\_connection.py", line 59, in send
+    return await self._connection.wrap_api_call(
+  File "C:\Users\ASUS\.pyenv\pyenv-win\versions\3.8.10\lib\site-packages\playwright\_impl\_connection.py", line 520, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+Exception: Browser.close: Connection closed while reading from the driver

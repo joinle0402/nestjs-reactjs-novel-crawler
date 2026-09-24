@@ -6,6 +6,10 @@ token.json
 .env.local
 
 # Runtime data
+tts_worker.lock
+tts_runner.pid
+crawl_worker.lock
+crawl_runner.pid
 novels.db
 *.db
 browser_state.json

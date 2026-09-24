@@ -422,6 +422,8 @@ def print_jobs(jobs) -> None:
 
 def print_config() -> None:
 
+    config.load_tts_settings()
+
     print("\n=== Cấu hình hiện tại ===")
 
     fields = [
@@ -440,6 +442,8 @@ def print_config() -> None:
         ("TTS_VOICE", config.TTS_VOICE),
 
         ("TTS_RATE", config.TTS_RATE),
+
+        ("TTS_BGM_ENABLED", config.TTS_BGM_ENABLED),
 
         ("TTS_CONCURRENCY", config.TTS_CONCURRENCY),
 

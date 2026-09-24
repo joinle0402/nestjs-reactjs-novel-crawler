@@ -9,6 +9,12 @@ import {
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { RATES, useAudioPlayer } from '@/features/audio/AudioPlayerContext.tsx';
+import { isActiveTtsJob } from '@/features/tts/api/ttsApi.ts';
+import { TtsJobLine } from '@/features/tts/components/TtsJobLine.tsx';
+import { useCurrentTtsJobQuery } from '@/features/tts/hooks/useTtsQueries.ts';
+import { isActiveCrawlJob } from '@/features/crawl/api/crawlApi.ts';
+import { CrawlJobLine } from '@/features/crawl/components/CrawlJobLine.tsx';
+import { useCurrentCrawlJobQuery } from '@/features/crawl/hooks/useCrawlQueries.ts';
 
 function formatTime(seconds: number): string {
     if (!Number.isFinite(seconds) || seconds < 0) {
@@ -39,8 +45,14 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
         playNext,
         stop,
     } = useAudioPlayer();
+    const jobQuery = useCurrentTtsJobQuery();
+    const job = jobQuery.data;
+    const jobActive = isActiveTtsJob(job);
+    const crawlQuery = useCurrentCrawlJobQuery();
+    const crawlJob = crawlQuery.data;
+    const crawlActive = isActiveCrawlJob(crawlJob);
 
-    if (!track) {
+    if (!track && !jobActive && !crawlActive) {
         return null;
     }
 
@@ -49,11 +61,15 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
 
     return (
         <div
-            className="bottom-player"
+            className={track ? `bottom-player${jobActive || crawlActive ? ' bottom-player--with-job' : ''}` : 'bottom-player bottom-player--tts-only'}
             role="region"
-            aria-label="Trình nghe truyện"
+            aria-label={track ? 'Trình nghe truyện' : 'Tiến độ tác vụ'}
             style={{ left: siderWidth }}
         >
+            {crawlActive && crawlJob ? <CrawlJobLine job={crawlJob} /> : null}
+            {jobActive && job ? <TtsJobLine job={job} /> : null}
+            {track ? (
+                <div className="bottom-player__body">
             <div className="bottom-player__meta">
                 <SoundOutlined className="bottom-player__icon" />
                 <div className="bottom-player__titles">
@@ -130,6 +146,8 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
 
                 <Button type="text" icon={<CloseOutlined />} onClick={stop} aria-label="Đóng trình nghe" />
             </div>
+                </div>
+            ) : null}
         </div>
     );
 }

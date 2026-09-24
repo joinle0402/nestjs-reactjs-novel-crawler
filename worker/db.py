@@ -95,6 +95,10 @@ class ConnectionAdapter:
     def fetchall(self) -> list[Row]:
         return [dict(row) for row in self._cursor.fetchall()]
 
+    @property
+    def rowcount(self) -> int:
+        return int(self._cursor.rowcount)
+
     def commit(self) -> None:
         self._conn.commit()
 

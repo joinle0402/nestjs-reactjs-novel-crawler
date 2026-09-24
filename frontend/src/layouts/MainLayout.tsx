@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { Layout, Menu, Typography } from 'antd';
-import { BookOutlined, DashboardOutlined, ReadOutlined } from '@ant-design/icons';
+import { BookOutlined, CloudDownloadOutlined, DashboardOutlined, ReadOutlined, SettingOutlined } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BottomPlayer } from '@/features/audio/BottomPlayer.tsx';
 import { useAudioPlayer } from '@/features/audio/AudioPlayerContext.tsx';
+import { isActiveTtsJob } from '@/features/tts/api/ttsApi.ts';
+import { useTtsJobWatch } from '@/features/tts/hooks/useTtsQueries.ts';
+import { isActiveCrawlJob } from '@/features/crawl/api/crawlApi.ts';
+import { useCrawlJobWatch } from '@/features/crawl/hooks/useCrawlQueries.ts';
 
 const { Sider, Content } = Layout;
 
@@ -12,9 +16,19 @@ export function MainLayout() {
     const location = useLocation();
     const navigate = useNavigate();
     const { track } = useAudioPlayer();
+    const jobQuery = useTtsJobWatch();
+    const jobActive = isActiveTtsJob(jobQuery.data);
+    const crawlQuery = useCrawlJobWatch();
+    const crawlActive = isActiveCrawlJob(crawlQuery.data);
 
     const isHome = location.pathname === '/';
-    const selectedKeys = isHome ? ['dashboard', 'novels'] : [];
+    const selectedKeys = location.pathname.startsWith('/settings')
+        ? ['settings']
+        : location.pathname.startsWith('/crawl')
+          ? ['crawl']
+          : isHome
+            ? ['dashboard', 'novels']
+            : [];
 
     const goHome = (scrollToNovels = false) => {
         navigate('/');
@@ -72,6 +86,10 @@ export function MainLayout() {
                                 goHome(false);
                             } else if (key === 'novels') {
                                 goHome(true);
+                            } else if (key === 'settings') {
+                                navigate('/settings');
+                            } else if (key === 'crawl') {
+                                navigate('/crawl');
                             }
                         }}
                         items={[
@@ -97,6 +115,22 @@ export function MainLayout() {
                                     },
                                 ],
                             },
+                            {
+                                type: 'group',
+                                label: 'Hệ thống',
+                                children: [
+                                    {
+                                        key: 'crawl',
+                                        icon: <CloudDownloadOutlined />,
+                                        label: 'Crawler',
+                                    },
+                                    {
+                                        key: 'settings',
+                                        icon: <SettingOutlined />,
+                                        label: 'Cài đặt',
+                                    },
+                                ],
+                            },
                         ]}
                     />
                 </div>
@@ -104,7 +138,7 @@ export function MainLayout() {
 
             <Layout>
                 <Content
-                    className={track ? 'layout-with-player' : undefined}
+                    className={track ? 'layout-with-player' : jobActive || crawlActive ? 'layout-with-tts' : undefined}
                     style={{ padding: 16, background: '#f5f5f5', minHeight: '100vh' }}
                 >
                     <Outlet />

@@ -179,8 +179,9 @@ def action_tts() -> None:
     chapter_range = prompts.ask_chapter_range(max_available=max_available)
     print(f"\nPreview phạm vi: {chapter_range.preview(max_available)}")
 
-    voice = input(f"Giọng TTS [{config.TTS_VOICE}]: ").strip() or config.TTS_VOICE
-    rate = input(f"Tốc độ TTS [{config.TTS_RATE}]: ").strip() or config.TTS_RATE
+    settings = config.load_tts_settings()
+    voice = input(f"Giọng TTS [{settings['voice']}]: ").strip() or str(settings["voice"])
+    rate = input(f"Tốc độ TTS [{settings['rate']}]: ").strip() or str(settings["rate"])
 
     if not prompts.confirm("Bắt đầu TTS?"):
         print("Đã hủy.")

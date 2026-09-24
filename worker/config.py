@@ -1,5 +1,6 @@
 """Cấu hình crawler sangtacviet.com — sửa các giá trị dưới đây rồi chạy crawler.py."""
 
+import json
 import os
 from pathlib import Path
 
@@ -77,8 +78,49 @@ BGM_FADE_OUT_MS = 3000
 BGM_EXPORT_BITRATE = "128k"
 
 # TTS — edge-tts (miễn phí, giọng neural tiếng Việt)
-TTS_VOICE = "vi-VN-HoaiMyNeural"  # giọng nữ
-TTS_RATE = "+50%"  # ~1.5x tốc độ
+# Giọng, tốc độ và bật/tắt nhạc nền chỉ nằm ở file này.
+# Web (Cài đặt) và console cùng đọc/ghi; BGM_PATH bên trên vẫn là file nhạc.
+TTS_SETTINGS_PATH = WORKER_DIR / "tts_settings.json"
+_TTS_SETTING_DEFAULTS = {
+    "engine": "edge-tts",
+    "voice": "vi-VN-HoaiMyNeural",
+    "rate": "+50%",
+    "bgmEnabled": True,
+}
+
+
+def load_tts_settings() -> dict:
+    """Đọc mặc định TTS. Ghi file lần đầu nếu chưa có."""
+    global TTS_ENGINE, TTS_VOICE, TTS_RATE, TTS_BGM_ENABLED
+    data = dict(_TTS_SETTING_DEFAULTS)
+    if TTS_SETTINGS_PATH.is_file():
+        try:
+            loaded = json.loads(TTS_SETTINGS_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            loaded = None
+        if isinstance(loaded, dict):
+            for key, default in _TTS_SETTING_DEFAULTS.items():
+                if key not in loaded or loaded[key] in (None, ""):
+                    continue
+                data[key] = loaded[key]
+    else:
+        TTS_SETTINGS_PATH.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    data["bgmEnabled"] = bool(data["bgmEnabled"])
+    TTS_ENGINE = str(data["engine"])
+    TTS_VOICE = str(data["voice"])
+    TTS_RATE = str(data["rate"])
+    TTS_BGM_ENABLED = data["bgmEnabled"]
+    return data
+
+
+TTS_ENGINE = str(_TTS_SETTING_DEFAULTS["engine"])
+TTS_VOICE = str(_TTS_SETTING_DEFAULTS["voice"])
+TTS_RATE = str(_TTS_SETTING_DEFAULTS["rate"])
+TTS_BGM_ENABLED = bool(_TTS_SETTING_DEFAULTS["bgmEnabled"])
+load_tts_settings()
 
 # Playwright
 HEADLESS = False  # False để người dùng giải captcha

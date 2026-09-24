@@ -318,6 +318,7 @@ async def _tts_chapter(
     *,
     voice: str,
     rate: str,
+    use_bgm: bool,
     quiet: bool = False,
 ) -> Path:
     async with chapter_sem:
@@ -328,7 +329,7 @@ async def _tts_chapter(
             await _tts_chapter_content(
                 ch, ch.content, output_path, chunk_sem, voice=voice, rate=rate, quiet=quiet
             )
-            if _bgm_enabled():
+            if use_bgm:
                 _mix_background_music(output_path)
             update_chapter_mp3(ch.id, str(output_path))
             return output_path
@@ -343,6 +344,7 @@ async def _generate_all_mp3(
     *,
     voice: str,
     rate: str,
+    use_bgm: bool,
     quiet: bool = False,
 ) -> tuple[list[Path], list[Chapter]]:
     chapter_sem = asyncio.Semaphore(TTS_CONCURRENCY)
@@ -362,6 +364,7 @@ async def _generate_all_mp3(
                 chunk_sem,
                 voice=voice,
                 rate=rate,
+                use_bgm=use_bgm,
                 quiet=quiet,
             )
         )
@@ -382,8 +385,18 @@ async def _generate_all_mp3(
 
 
 def chapter_to_mp3(text: str, output_path: Path) -> None:
-    asyncio.run(_text_to_mp3_with_retry(text, output_path))
-    if _bgm_enabled():
+    from config import load_tts_settings
+
+    settings = load_tts_settings()
+    asyncio.run(
+        _text_to_mp3_with_retry(
+            text,
+            output_path,
+            voice=str(settings["voice"]),
+            rate=str(settings["rate"]),
+        )
+    )
+    if settings["bgmEnabled"] and _bgm_enabled():
         if not _ffmpeg_on_path():
             raise RuntimeError("Nhạc nền cần ffmpeg (pydub).")
         _mix_background_music(output_path)
@@ -397,10 +410,20 @@ def generate_mp3_for_novel(
     rate: str | None = None,
     *,
     quiet: bool = False,
+    use_bgm: bool | None = None,
 ) -> list[Path]:
-    """Tạo 1 file MP3 cho mỗi chương chưa có audio hợp lệ (song song)."""
-    voice = voice or TTS_VOICE
-    rate = rate or TTS_RATE
+    """Tạo 1 file MP3 cho mỗi chương chưa có audio hợp lệ (song song).
+
+    use_bgm=None đọc bật/tắt từ tts_settings.json lúc bắt đầu.
+    Truyền True/False để khóa snapshot của một job, không đọc lại giữa chừng.
+    """
+    from config import load_tts_settings
+
+    settings = load_tts_settings()
+    voice = voice or str(settings["voice"])
+    rate = rate or str(settings["rate"])
+    if use_bgm is None:
+        use_bgm = bool(settings["bgmEnabled"])
 
     all_chapters = get_chapters_for_novel(novel_id)
     need_mp3 = get_chapters_without_mp3(novel_id)
@@ -432,11 +455,12 @@ def generate_mp3_for_novel(
             "Lưu ý: chưa cài ffmpeg — ghép chunk MP3 bằng nối byte "
             "(vẫn nghe được, chất lượng tương đương)."
         )
-    if _bgm_enabled() and not _ffmpeg_on_path():
+    mix_bgm = bool(use_bgm) and _bgm_enabled()
+    if mix_bgm and not _ffmpeg_on_path():
         if not quiet:
-            print("Lỗi: nhạc nền cần ffmpeg (pydub). Cài ffmpeg hoặc đặt BGM_PATH = None.")
+            print("Lỗi: nhạc nền cần ffmpeg (pydub). Cài ffmpeg hoặc tắt nhạc nền.")
         return []
-    if _bgm_enabled() and not quiet:
+    if mix_bgm and not quiet:
         print(f"Nhạc nền: {BGM_PATH} ({BGM_VOLUME_DB} dB, loop={BGM_LOOP})")
 
     chunk_info = ""
@@ -451,7 +475,14 @@ def generate_mp3_for_novel(
     novel_dir = Path(MP3_OUTPUT_DIR) / _safe_filename(novel_title)
     try:
         success, failed = asyncio.run(
-            _generate_all_mp3(chapters, novel_dir, voice=voice, rate=rate, quiet=quiet)
+            _generate_all_mp3(
+                chapters,
+                novel_dir,
+                voice=voice,
+                rate=rate,
+                use_bgm=mix_bgm,
+                quiet=quiet,
+            )
         )
     except KeyboardInterrupt:
         reset_processing_tts_chapters(novel_id)

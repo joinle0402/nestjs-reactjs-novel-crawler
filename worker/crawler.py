@@ -18,6 +18,7 @@ import re
 import sys
 import time
 import traceback
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -127,9 +128,65 @@ def _save_browser_state(context: BrowserContext, path: str = BROWSER_STATE_PATH)
     print(f"Đã lưu session vào {path}")
 
 
+class CrawlStopped(Exception):
+    """Job web bị hủy hoặc không còn được chạy."""
+
+    def __init__(self, reason: str = "cancelled") -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class CrawlFailed(RuntimeError):
+    """Lỗi khiến cả job dừng (403, mất session)."""
+
+
+class CrawlControl:
+    """Console chờ Enter. Job web ghi trạng thái vào DB."""
+
+    abort_on_forbidden = False
+
+    def wait_manual(self, message: str) -> None:
+        print(message)
+        input(">>> Nhấn Enter để tiếp tục...")
+
+    def checkpoint(self) -> None:
+        return
+
+    def on_novel(self, novel_id: int, title: str) -> None:
+        return
+
+    def on_chapters_planned(self, rows: list[dict]) -> None:
+        return
+
+    def on_chapter(
+        self,
+        chapter_number: int,
+        status: str,
+        chapter_id: int | None,
+        error: str | None,
+    ) -> None:
+        return
+
+
+_crawl_control: ContextVar[CrawlControl] = ContextVar("crawl_control", default=CrawlControl())
+
+
+def _ctrl() -> CrawlControl:
+    return _crawl_control.get()
+
+
 def _wait_for_user(message: str) -> None:
-    print(message)
-    input(">>> Nhấn Enter để tiếp tục...")
+    _ctrl().wait_manual(message)
+
+
+def _interruptible_sleep(seconds: float) -> None:
+    end = time.time() + seconds
+    while True:
+        _ctrl().checkpoint()
+        remaining = end - time.time()
+        if remaining <= 0:
+            return
+        time.sleep(min(0.4, remaining))
 
 
 _MAX_NAV_RETRIES = 8
@@ -311,7 +368,7 @@ def _sleep_between_chapters(chapters_saved: int) -> None:
     hi = max(DELAY_BETWEEN_CHAPTERS_MIN, DELAY_BETWEEN_CHAPTERS_MAX)
     delay = random.uniform(lo, hi)
     print(f"  Nghỉ {delay:.1f}s trước chương tiếp...")
-    time.sleep(delay)
+    _interruptible_sleep(delay)
     if (
         CRAWL_BATCH_EVERY > 0
         and chapters_saved > 0
@@ -320,7 +377,7 @@ def _sleep_between_chapters(chapters_saved: int) -> None:
         print(
             f"  Nghỉ batch {CRAWL_BATCH_PAUSE_SEC}s sau {chapters_saved} chương đã cào..."
         )
-        time.sleep(CRAWL_BATCH_PAUSE_SEC)
+        _interruptible_sleep(CRAWL_BATCH_PAUSE_SEC)
 
 
 def _wait_for_content(page: Page) -> None:
@@ -330,6 +387,7 @@ def _wait_for_content(page: Page) -> None:
     for reload_attempt in range(MAX_CONTENT_RELOADS + 1):
         deadline = time.time() + CONTENT_RELOAD_AFTER_SEC
         while time.time() < deadline:
+            _ctrl().checkpoint()
             try:
                 if _is_forbidden_page(page):
                     raise CrawlForbiddenError("403 Forbidden khi chờ nội dung chương.")
@@ -613,6 +671,29 @@ def crawl_novel(
     run_tts: bool = True,
     novel_id: int | None = None,
     tts_chapter_numbers: frozenset[int] | None = None,
+    control: CrawlControl | None = None,
+) -> int:
+    token = _crawl_control.set(control or CrawlControl())
+    try:
+        return _crawl_novel(
+            novel_url=novel_url,
+            max_chapters=max_chapters,
+            chapter_numbers=chapter_numbers,
+            run_tts=run_tts,
+            novel_id=novel_id,
+            tts_chapter_numbers=tts_chapter_numbers,
+        )
+    finally:
+        _crawl_control.reset(token)
+
+
+def _crawl_novel(
+    novel_url: str | None = None,
+    max_chapters: int | None = None,
+    chapter_numbers: frozenset[int] | None = None,
+    run_tts: bool = True,
+    novel_id: int | None = None,
+    tts_chapter_numbers: frozenset[int] | None = None,
 ) -> int:
     if novel_id is not None:
         novel = get_novel_by_id(novel_id)
@@ -753,15 +834,19 @@ def crawl_novel(
             chapters = _chapters_from_db(novel_url, db_chapters)
             print(f"Dùng danh sách chương từ DB ({len(chapters)} chương), bỏ qua API.")
 
+        numbered = list(enumerate(chapters, start=1))
         if max_chapters is not None and chapter_numbers is None:
-            chapters = chapters[:max_chapters]
-            print(f"Chỉ cào {len(chapters)} chương đầu (max_chapters={max_chapters}).")
+            numbered = numbered[:max_chapters]
+            print(f"Chỉ cào {len(numbered)} chương đầu (max_chapters={max_chapters}).")
 
         if required_numbers is not None:
-            chapters = [ch for idx, ch in enumerate(chapters, start=1) if idx in required_numbers]
-            if not chapters:
+            numbered = [item for item in numbered if item[0] in required_numbers]
+            if not numbered:
                 raise RuntimeError("Không có chương nào trong phạm vi đã chọn.")
-            print(f"Lọc {len(chapters)} chương trong phạm vi.")
+            print(f"Lọc {len(numbered)} chương trong phạm vi.")
+
+        chapters = [ch for _, ch in numbered]
+        number_by_site = {ch.site_id: number for number, ch in numbered}
 
         if not chapters:
             raise RuntimeError("Không có chương để cào.")
@@ -801,36 +886,50 @@ def crawl_novel(
         print(f"Truyện: {title}")
         print(f"Tác giả: {author or '(không rõ)'}")
         novel_id = upsert_novel(novel_url, title, author, summary)
+        _ctrl().on_novel(novel_id, title)
 
         existing_by_site_id = {ch.chapter_site_id: ch for ch in get_chapters_for_novel(novel_id)}
 
         work_items: list[tuple[int, ChapterInfo, object | None]] = []
-        for idx, ch in enumerate(chapters, start=1):
+        for ch in chapters:
             existing = existing_by_site_id.get(ch.site_id)
-            work_items.append((idx, ch, existing))
+            number = existing.chapter_number if existing else number_by_site[ch.site_id]
+            work_items.append((number, ch, existing))
 
         work_items = sort_chapters_for_crawl_keyed(work_items)
+        _ctrl().on_chapters_planned(
+            [
+                {
+                    "chapter_number": number,
+                    "chapter_site_id": ch.site_id,
+                    "title": ch.title,
+                    "chapter_id": getattr(existing, "id", None),
+                }
+                for number, ch, existing in work_items
+            ]
+        )
         total = len(work_items)
         skip_count = 0
         interrupted = False
         chapters_saved = 0
 
         try:
-            for pos, (idx, ch, existing) in enumerate(work_items, start=1):
+            for pos, (number, ch, existing) in enumerate(work_items, start=1):
+                _ctrl().checkpoint()
                 pct = _progress_pct(pos, total)
+                chapter_id = getattr(existing, "id", None)
 
-                if existing and existing.crawl_status == STATUS_COMPLETED:
+                if existing and (
+                    existing.crawl_status == STATUS_COMPLETED or chapter_has_content(existing.content)
+                ):
                     skip_count += 1
-                    print(f"\n[{pos}/{total}] ({pct}%) {ch.title} — đã có, skip")
-                    continue
-
-                if existing and chapter_has_content(existing.content):
-                    skip_count += 1
+                    _ctrl().on_chapter(number, "skipped", chapter_id, None)
                     print(f"\n[{pos}/{total}] ({pct}%) {ch.title} — đã có, skip")
                     continue
 
                 print(f"\n[{pos}/{total}] ({pct}%) {ch.title}")
                 print(f"  -> {ch.url}")
+                _ctrl().on_chapter(number, "running", chapter_id, None)
 
                 _goto_chapter(page, context, ch.url)
 
@@ -852,10 +951,12 @@ def crawl_novel(
                     rec = existing_by_site_id.get(ch.site_id)
                     if rec:
                         update_crawl_status(rec.id, STATUS_FAILED)
+                    _ctrl().on_chapter(number, "failed", chapter_id, "Không có nội dung")
                     continue
 
-                upsert_chapter(novel_id, ch.site_id, idx, ch.title, content)
+                saved_id = upsert_chapter(novel_id, ch.site_id, number, ch.title, content)
                 chapters_saved += 1
+                _ctrl().on_chapter(number, "completed", saved_id, None)
                 print(f"  Đã lưu ({len(content)} ký tự)")
 
                 if pos < total:
@@ -863,6 +964,8 @@ def crawl_novel(
         except CrawlForbiddenError as exc:
             print(f"\n[LỖI 403] {exc}")
             print("Tiến độ đã lưu — chạy lại sau vài giờ hoặc dùng --chapter-range nhỏ hơn.")
+            if _ctrl().abort_on_forbidden:
+                raise CrawlFailed(str(exc)) from exc
         except KeyboardInterrupt:
             interrupted = True
             print("\n\nĐã dừng cào (Ctrl+C). Tiến độ đã lưu — chạy lại để resume.")

@@ -15,9 +15,9 @@ import {
     message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { CaretRightOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { CaretRightOutlined, CloudDownloadOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
 import { useNovelStatsQuery } from '@/features/novels/hooks/useNovelStatsQuery.ts';
 import { useChaptersQuery } from '@/features/chapters/hooks/useChaptersQuery.ts';
@@ -34,6 +34,10 @@ import { JOB_STATUS_OPTIONS, JobStatus, type JobStatus as JobStatusValue } from 
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { parseRouteId } from '@/shared/lib/parseRouteId.ts';
 import { useAudioPlayer } from '@/features/audio/AudioPlayerContext.tsx';
+import { isActiveTtsJob } from '@/features/tts/api/ttsApi.ts';
+import { TtsRunModal, type TtsRunRequest } from '@/features/tts/components/TtsRunModal.tsx';
+import { useCurrentTtsJobQuery, useTtsPreviewQuery } from '@/features/tts/hooks/useTtsQueries.ts';
+import { formatChapterRangeInput } from '@/features/tts/lib/chapterRange.ts';
 
 const PAGE_SIZE = 12;
 
@@ -62,6 +66,8 @@ export function NovelDetailPage() {
     const { playChapter, track, status } = useAudioPlayer();
     const [formOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<ChapterListItem | null>(null);
+    const [selectedChapters, setSelectedChapters] = useState<Map<number, number>>(new Map());
+    const [runRequest, setRunRequest] = useState<TtsRunRequest | null>(null);
 
     const createMutation = useCreateChapterMutation();
     const updateMutation = useUpdateChapterMutation();
@@ -84,9 +90,19 @@ export function NovelDetailPage() {
     );
 
     const novelQuery = useNovelQuery(novelId);
-    const statsQuery = useNovelStatsQuery(novelId);
-    const chaptersQuery = useChaptersQuery(novelId, chapterParams);
+    const jobQuery = useCurrentTtsJobQuery();
+    const jobActive = isActiveTtsJob(jobQuery.data);
+    const jobHere = jobActive && jobQuery.data?.novelId === novelId;
+    const pollMs = jobHere ? 3000 : false;
+    const statsQuery = useNovelStatsQuery(novelId, { refetchInterval: pollMs });
+    const chaptersQuery = useChaptersQuery(novelId, chapterParams, { refetchInterval: pollMs });
+    const previewQuery = useTtsPreviewQuery(novelId, undefined, pollMs);
     const editingDetailQuery = useChapterQuery(formOpen && editing ? editing.id : undefined);
+
+    useEffect(() => {
+        setSelectedChapters(new Map());
+        setRunRequest(null);
+    }, [novelId]);
 
     const updateFilters = (patch: Record<string, string | undefined>) => {
         const next = new URLSearchParams(searchParams);
@@ -279,6 +295,27 @@ export function NovelDetailPage() {
 
     const novel = novelQuery.data;
     const stats = statsQuery.data;
+    const missing = previewQuery.data?.missing ?? 0;
+    const failed = previewQuery.data?.failed ?? 0;
+    const selectedNumbers = [...selectedChapters.values()].sort((a, b) => a - b);
+    const ttsAction = (() => {
+        if (selectedNumbers.length > 0) {
+            return {
+                label: `Tạo audio (${selectedNumbers.length})`,
+                request: { scope: 'chapters' as const, chapterRange: formatChapterRangeInput(selectedNumbers) },
+            };
+        }
+        if (!previewQuery.data) {
+            return null;
+        }
+        if (missing > 0 && failed !== missing) {
+            return { label: `Tạo audio (${missing})`, request: { scope: 'missing' as const, chapterRange: '' } };
+        }
+        if (failed > 0) {
+            return { label: `Chạy lại lỗi (${failed})`, request: { scope: 'failed' as const, chapterRange: '' } };
+        }
+        return null;
+    })();
 
     return (
         <Space orientation="vertical" size={16} style={{ width: '100%' }}>
@@ -302,9 +339,23 @@ export function NovelDetailPage() {
                     </>
                 }
                 extra={
-                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                        Thêm chương
-                    </Button>
+                    <Space>
+                        {ttsAction ? (
+                            <Button
+                                icon={<SoundOutlined />}
+                                disabled={jobActive}
+                                onClick={() => setRunRequest(ttsAction.request)}
+                            >
+                                {ttsAction.label}
+                            </Button>
+                        ) : null}
+                        <Button icon={<CloudDownloadOutlined />} onClick={() => navigate(`/crawl?novelId=${novel.id}`)}>
+                            Cào chương
+                        </Button>
+                        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                            Thêm chương
+                        </Button>
+                    </Space>
                 }
             >
                 <Space wrap style={{ marginBottom: 12 }}>
@@ -330,6 +381,12 @@ export function NovelDetailPage() {
                     </Space>
                 </Space>
 
+                {jobHere && jobQuery.data ? (
+                    <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+                        {jobQuery.data.progress.detail}
+                    </Typography.Paragraph>
+                ) : null}
+
                 {chaptersQuery.isError ? (
                     <Alert type="error" showIcon title="Không tải được mục lục" description={getErrorMessage(chaptersQuery.error)} />
                 ) : !chaptersQuery.isLoading && !chaptersQuery.data?.data.length ? (
@@ -345,6 +402,24 @@ export function NovelDetailPage() {
                         columns={columns}
                         dataSource={chaptersQuery.data?.data}
                         loading={chaptersQuery.isFetching}
+                        rowSelection={{
+                            selectedRowKeys: [...selectedChapters.keys()],
+                            preserveSelectedRowKeys: true,
+                            onChange: (keys, rows) => {
+                                setSelectedChapters((current) => {
+                                    const next = new Map<number, number>();
+                                    const fromPage = new Map(rows.map((row) => [row.id, row.chapterNumber]));
+                                    for (const key of keys) {
+                                        const id = Number(key);
+                                        const chapterNumber = fromPage.get(id) ?? current.get(id);
+                                        if (chapterNumber != null) {
+                                            next.set(id, chapterNumber);
+                                        }
+                                    }
+                                    return next;
+                                });
+                            },
+                        }}
                         pagination={{
                             current: chaptersQuery.data?.meta.page ?? page,
                             pageSize: PAGE_SIZE,
@@ -355,12 +430,26 @@ export function NovelDetailPage() {
                         onChange={(pagination) => updateFilters({ page: String(pagination.current ?? 1) })}
                         onRow={(chapter) => ({
                             style: { cursor: 'pointer' },
-                            onClick: () => navigate(`/novels/${novelId}/chapters/${chapter.id}`),
+                            onClick: (event) => {
+                                const target = event.target as HTMLElement;
+                                if (target.closest('a, button, .ant-checkbox, .ant-checkbox-wrapper')) {
+                                    return;
+                                }
+                                navigate(`/novels/${novelId}/chapters/${chapter.id}`);
+                            },
                         })}
                         scroll={{ x: 900 }}
                     />
                 )}
             </Card>
+
+            <TtsRunModal
+                key={runRequest ? `${runRequest.scope}:${runRequest.chapterRange}` : 'tts-run'}
+                open={runRequest !== null}
+                novelId={novelId}
+                request={runRequest}
+                onClose={() => setRunRequest(null)}
+            />
 
             <ChapterFormModal
                 open={formOpen}

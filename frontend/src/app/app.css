@@ -28,14 +28,59 @@ a {
     right: 0;
     bottom: 0;
     z-index: 100;
-    display: grid;
-    grid-template-columns: minmax(160px, 1.2fr) minmax(200px, 2fr) auto;
-    gap: 12px 20px;
-    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     padding: 10px 16px;
     background: #fff;
     border-top: 1px solid #f0f0f0;
     box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.bottom-player--tts-only {
+    min-height: 36px;
+    padding: 0 16px;
+    justify-content: center;
+}
+
+.bottom-player--with-job {
+    padding-top: 0;
+    padding-bottom: 8px;
+}
+
+.bottom-player__body {
+    display: grid;
+    grid-template-columns: minmax(160px, 1.2fr) minmax(200px, 2fr) auto;
+    gap: 12px 20px;
+    align-items: center;
+    width: 100%;
+}
+
+.tts-job-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 36px;
+    width: 100%;
+}
+
+.bottom-player--with-job .tts-job-line {
+    min-height: 32px;
+    margin-bottom: 2px;
+}
+
+.tts-job-line__text {
+    flex: 1;
+    min-width: 0;
+}
+
+.tts-job-line a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.tts-job-line a:hover {
+    color: #1677ff;
 }
 
 .bottom-player__meta {
@@ -92,6 +137,9 @@ a {
 @media (max-width: 768px) {
     .bottom-player {
         left: 0 !important;
+    }
+
+    .bottom-player__body {
         grid-template-columns: 1fr;
         gap: 8px;
     }
@@ -103,4 +151,8 @@ a {
 
 .layout-with-player {
     padding-bottom: 120px !important;
+}
+
+.layout-with-tts {
+    padding-bottom: 52px !important;
 }
