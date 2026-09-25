@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Callable
@@ -27,6 +28,7 @@ from config import (
     TTS_RATE,
     TTS_REQUEST_DELAY_SEC,
     TTS_VOICE,
+    SELECTORS,
 )
 from db import (
     Chapter,
@@ -46,6 +48,70 @@ _ffmpeg_available: bool | None = None
 _bgm_source = None
 _bgm_source_path: Path | None = None
 _bgm_missing_warned = False
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\ufeff\u2060]")
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F300-\U0001FAFF"
+    "\U00002600-\U000027BF"
+    "\U0001F1E6-\U0001F1FF"
+    "\U0000FE00-\U0000FE0F"
+    "]+"
+)
+_HAN_RE = re.compile(r"[\u4e00-\u9fff]")
+_HAN_PUNCT = str.maketrans(
+    {
+        "。": ". ",
+        "！": "! ",
+        "？": "? ",
+        "，": ", ",
+        "、": ", ",
+        "：": ": ",
+        "；": "; ",
+        "「": '"',
+        "」": '"',
+        "『": '"',
+        "』": '"',
+    }
+)
+_JUNK_PHRASES = (
+    SELECTORS["placeholder_text"],
+    SELECTORS["loading_text"],
+)
+
+
+def _normalize_tts_text(text: str) -> str:
+    """Bỏ rác khiến edge-tts retry. Không viết lại câu chuyện."""
+    if not text:
+        return ""
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = _URL_RE.sub(" ", text)
+    text = text.translate(_HAN_PUNCT)
+    text = _ZERO_WIDTH_RE.sub("", text)
+    text = _CONTROL_RE.sub("", text)
+    text = _EMOJI_RE.sub("", text)
+    for phrase in _JUNK_PHRASES:
+        text = re.sub(re.escape(phrase), "", text, flags=re.IGNORECASE)
+
+    kept: list[str] = []
+    for raw_line in text.splitlines():
+        line = re.sub(r"[ \t]+", " ", raw_line).strip()
+        if not line:
+            kept.append("")
+            continue
+        han = len(_HAN_RE.findall(line))
+        if han > 0 and han / len(line) >= 0.5:
+            kept.append("")
+            continue
+        kept.append(line)
+
+    text = "\n".join(kept)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r" {2,}", " ", text)
+    return text.strip()
 
 
 def _safe_filename(text: str, max_len: int = 80) -> str:
@@ -133,10 +199,26 @@ async def _text_to_mp3_with_retry(
 
 
 def _ffmpeg_on_path() -> bool:
+    """True khi ffmpeg chạy được. which() thôi chưa đủ: alias Windows vẫn ném WinError 2."""
     global _ffmpeg_available
-    if _ffmpeg_available is None:
-        _ffmpeg_available = shutil.which("ffmpeg") is not None
-    return _ffmpeg_available
+    if _ffmpeg_available is not None:
+        return _ffmpeg_available
+    exe = shutil.which("ffmpeg")
+    if not exe:
+        _ffmpeg_available = False
+        return False
+    try:
+        subprocess.run(
+            [exe, "-version"],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        _ffmpeg_available = False
+        return False
+    _ffmpeg_available = True
+    return True
 
 
 def _bgm_enabled() -> bool:
@@ -191,6 +273,26 @@ def _prepare_bgm_for_voice(voice):
     return bgm
 
 
+def _mix_background_music_or_skip(voice_path: Path, *, quiet: bool = False) -> None:
+    """Trộn nhạc nền nếu ffmpeg chạy được. Lỗi nhạc nền không được hủy file giọng."""
+    if not _ffmpeg_on_path():
+        if not quiet:
+            print(
+                "Lưu ý: không có ffmpeg — bỏ nhạc nền, giữ file giọng đọc. "
+                "Cài ffmpeg (winget install Gyan.FFmpeg) rồi chạy lại nếu cần nhạc nền.",
+                flush=True,
+            )
+        return
+    try:
+        _mix_background_music(voice_path)
+    except Exception as exc:
+        if not quiet:
+            print(
+                f"Lưu ý: không trộn được nhạc nền ({exc}) — giữ file giọng đọc.",
+                flush=True,
+            )
+
+
 def _mix_background_music(voice_path: Path) -> None:
     """Trộn nhạc nền vào file giọng đọc (ghi đè cùng path)."""
     from pydub import AudioSegment
@@ -209,13 +311,16 @@ def _merge_mp3_files(chunk_paths: list[Path], output_path: Path) -> None:
     """Ghép các chunk MP3 — ưu tiên pydub+ffmpeg, fallback nối byte."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if _ffmpeg_on_path():
-        from pydub import AudioSegment
+        try:
+            from pydub import AudioSegment
 
-        combined = AudioSegment.empty()
-        for path in chunk_paths:
-            combined += AudioSegment.from_mp3(str(path))
-        combined.export(str(output_path), format="mp3")
-        return
+            combined = AudioSegment.empty()
+            for path in chunk_paths:
+                combined += AudioSegment.from_mp3(str(path))
+            combined.export(str(output_path), format="mp3")
+            return
+        except Exception as exc:
+            print(f"Ghép MP3 bằng ffmpeg lỗi ({exc}) — nối byte.", flush=True)
 
     with open(output_path, "wb") as out:
         for path in chunk_paths:
@@ -266,6 +371,9 @@ async def _tts_chapter_content(
     quiet: bool = False,
 ) -> None:
     """TTS nội dung chương — 1 request hoặc chunk + merge."""
+    content = _normalize_tts_text(content)
+    if not content:
+        raise ValueError("Nội dung chương rỗng sau khi chuẩn hóa")
     chars_total = len(content)
     start_tts_chapter(ch.id, chars_total)
 
@@ -330,7 +438,9 @@ async def _tts_chapter(
                 ch, ch.content, output_path, chunk_sem, voice=voice, rate=rate, quiet=quiet
             )
             if use_bgm:
-                _mix_background_music(output_path)
+                _mix_background_music_or_skip(output_path, quiet=quiet)
+            if not output_path.is_file() or output_path.stat().st_size <= 0:
+                raise RuntimeError(f"Không tạo được file MP3: {output_path}")
             update_chapter_mp3(ch.id, str(output_path))
             return output_path
         except Exception:
@@ -388,6 +498,9 @@ def chapter_to_mp3(text: str, output_path: Path) -> None:
     from config import load_tts_settings
 
     settings = load_tts_settings()
+    text = _normalize_tts_text(text)
+    if not text:
+        raise ValueError("Nội dung chương rỗng sau khi chuẩn hóa")
     asyncio.run(
         _text_to_mp3_with_retry(
             text,
@@ -397,9 +510,7 @@ def chapter_to_mp3(text: str, output_path: Path) -> None:
         )
     )
     if settings["bgmEnabled"] and _bgm_enabled():
-        if not _ffmpeg_on_path():
-            raise RuntimeError("Nhạc nền cần ffmpeg (pydub).")
-        _mix_background_music(output_path)
+        _mix_background_music_or_skip(output_path)
 
 
 def generate_mp3_for_novel(
@@ -455,11 +566,12 @@ def generate_mp3_for_novel(
             "Lưu ý: chưa cài ffmpeg — ghép chunk MP3 bằng nối byte "
             "(vẫn nghe được, chất lượng tương đương)."
         )
-    mix_bgm = bool(use_bgm) and _bgm_enabled()
-    if mix_bgm and not _ffmpeg_on_path():
-        if not quiet:
-            print("Lỗi: nhạc nền cần ffmpeg (pydub). Cài ffmpeg hoặc tắt nhạc nền.")
-        return []
+    mix_bgm = bool(use_bgm) and _bgm_enabled() and _ffmpeg_on_path()
+    if use_bgm and _bgm_enabled() and not mix_bgm and not quiet:
+        print(
+            "Lưu ý: không có ffmpeg — bỏ nhạc nền, vẫn tạo MP3 giọng đọc. "
+            "Cài ffmpeg: winget install Gyan.FFmpeg"
+        )
     if mix_bgm and not quiet:
         print(f"Nhạc nền: {BGM_PATH} ({BGM_VOLUME_DB} dB, loop={BGM_LOOP})")
 

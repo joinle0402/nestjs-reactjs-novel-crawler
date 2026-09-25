@@ -30,7 +30,7 @@ _load_env_file(WORKER_DIR / ".env", override=True)
 
 # Dán URL truyện vào đây, ví dụ:
 # https://sangtacviet.com/truyen/69shu/1/53962/
-NOVEL_URL = "https://sangtacviet.com/truyen/fanqie/1/7481496454264015897/"
+NOVEL_URL = "https://sangtacviet.com/truyen/fanqie/1/7275986706002627646/"
 
 # Giới hạn mặc định khi Enter (phiên nhỏ = an toàn hơn). Đặt None = hết miễn phí.
 # 50 chương: chia range 1-10, 11-20... nhiều phiên, nghỉ vài giờ giữa phiên.
@@ -146,7 +146,7 @@ TTS_REQUEST_DELAY_SEC = 1.0
 
 # Chia nội dung dài thành chunk trước khi TTS (ffmpeg tùy chọn cho ghép)
 ENABLE_TTS_CHUNK = True
-TTS_CHUNK_SIZE = 1000  # ký tự mỗi chunk
+TTS_CHUNK_SIZE = 3000  # ký tự mỗi chunk; khoảng 2500–4000 ít phiên hơn mà vẫn ổn định
 TTS_CHUNK_CONCURRENCY = 1  # số chunk TTS song song trong 1 chương
 
 # Lưu session Playwright sau captcha (tái sử dụng lần sau)

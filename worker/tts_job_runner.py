@@ -139,13 +139,14 @@ def run_job(job_id: int) -> None:
             mark_if_running(job_id, "completed", None)
             print(f"[TTS job {job_id}] không có chương cần tạo", flush=True)
             return
-        block = bgm_block_reason(bool(job["bgm_enabled"]))
+        use_bgm = bool(job["bgm_enabled"])
+        block = bgm_block_reason(use_bgm)
         if block:
-            mark_if_running(job_id, "failed", block)
-            return
+            print(f"[TTS job {job_id}] {block} — tiếp tục không nhạc nền.", flush=True)
+            use_bgm = False
         print(
             f"[TTS job {job_id}] {novel.title} scope={job['scope']} "
-            f"voice={job['voice']} rate={job['rate']} bgm={job['bgm_enabled']} "
+            f"voice={job['voice']} rate={job['rate']} bgm={use_bgm} "
             f"chapters={len(numbers)}",
             flush=True,
         )
@@ -155,7 +156,7 @@ def run_job(job_id: int) -> None:
             chapter_numbers=frozenset(numbers),
             voice=str(job["voice"]),
             rate=str(job["rate"]),
-            use_bgm=bool(job["bgm_enabled"]),
+            use_bgm=use_bgm,
         )
         current = fetch_job(job_id)
         if not current or current["status"] != "running":
