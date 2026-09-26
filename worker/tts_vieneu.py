@@ -42,6 +42,40 @@ def _emit(protocol, payload: dict) -> None:
     protocol.flush()
 
 
+REF_VOICES_DIR = Path(__file__).resolve().parent / "ref_voices"
+
+
+def _register_custom_voices(engine) -> None:
+    if not REF_VOICES_DIR.is_dir():
+        return
+
+    # Giọng Hoài My được clone từ edge-tts
+    hoaimy_ref = REF_VOICES_DIR / "hoaimy.wav"
+    if not hoaimy_ref.is_file():
+        hoaimy_ref = REF_VOICES_DIR / "hoaimy.mp3"
+
+    if hoaimy_ref.is_file():
+        try:
+            engine.add_voice("Hoài My (Clone)", str(hoaimy_ref), denoise=False)
+            print(f"đã nạp giọng clone: Hoài My (Clone) ({hoaimy_ref.name})", file=sys.stderr, flush=True)
+        except Exception as exc:
+            print(f"lỗi nạp giọng clone Hoài My: {exc}", file=sys.stderr, flush=True)
+
+    # Nạp thêm bất kỳ file âm thanh mẫu nào khác trong ref_voices nếu có
+    for ref_file in sorted(REF_VOICES_DIR.glob("*")):
+        if ref_file.suffix.lower() not in (".wav", ".mp3"):
+            continue
+        stem = ref_file.stem
+        if stem.lower() == "hoaimy":
+            continue
+        voice_name = f"{stem} (Clone)"
+        try:
+            engine.add_voice(voice_name, str(ref_file), denoise=True)
+            print(f"đã nạp giọng clone: {voice_name} ({ref_file.name})", file=sys.stderr, flush=True)
+        except Exception as exc:
+            print(f"lỗi nạp giọng clone {voice_name}: {exc}", file=sys.stderr, flush=True)
+
+
 def _load_engine():
     from vieneu import Vieneu
 
@@ -50,7 +84,9 @@ def _load_engine():
     if backend and backend != "auto":
         kwargs["backend"] = backend
     print(f"tải model backend={backend or 'auto'}", file=sys.stderr, flush=True)
-    return Vieneu(**kwargs)
+    engine = Vieneu(**kwargs)
+    _register_custom_voices(engine)
+    return engine
 
 
 def _wav_to_mp3(wav_path: Path, output_path: Path) -> None:

@@ -1,0 +1,19 @@
+---
+description: Bắt buộc dùng Codebase Memory MCP khi tra cứu code và kiến trúc
+globs: *
+alwaysApply: true
+---
+
+# BẮT BUỘC SỬ DỤNG CODEBASE MEMORY MCP
+
+Trước khi thực hiện tìm kiếm file, đọc code hoặc tìm hiểu logic dự án:
+1. **Project Name trong Graph:** `C-Users-ASUS-Desktop-workspace-project-novel-crawler`.
+2. **Quy tắc công cụ:**
+   - TUYỆT ĐỐI KHÔNG dùng `Grep` hoặc `Read` toàn bộ file khi cần tìm định nghĩa, hàm, class, hoặc xem luồng gọi.
+   - PHẢI gọi MCP `user-codebase-memory-mcp` trước:
+     - Tìm symbol/hàm/route/class: dùng `search_graph(name_pattern="...")`
+     - Xem ai gọi hàm hoặc hàm gọi những gì: dùng `trace_path(...)`
+     - Xem nội dung hàm/class cụ thể: dùng `get_code_snippet(qualified_name="...")`
+     - Xem cấu trúc/kiến trúc: dùng `get_architecture(...)`
+     - Đánh giá tác động khi sửa code: dùng `detect_changes(...)`
+3. **Fallback:** Chỉ được dùng `Read` (với `offset`, `limit`) hoặc `Grep` khi MCP trả về không tìm thấy kết quả hoặc file chưa được index đầy đủ.

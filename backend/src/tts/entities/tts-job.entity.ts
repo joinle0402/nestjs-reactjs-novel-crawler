@@ -19,6 +19,7 @@ export const EDGE_TTS_VOICES: { id: string; label: string }[] = [
 
 /** Tên truyền vào VieNeu `infer(voice=...)`. Hải Đăng là giọng mặc định của v3 Turbo. */
 export const VIENEU_VOICES: { id: string; label: string }[] = [
+    { id: 'Hoài My (Clone)', label: 'Hoài My (Clone — nữ, Bắc)' },
     { id: 'Adam bựa', label: 'Adam bựa — nam, Bắc, tự nhiên' },
     { id: 'Trúc Ly', label: 'Trúc Ly — nữ, Bắc, tự nhiên' },
     { id: 'Thiện Minh', label: 'Thiện Minh — nam, Bắc, kể chuyện' },
