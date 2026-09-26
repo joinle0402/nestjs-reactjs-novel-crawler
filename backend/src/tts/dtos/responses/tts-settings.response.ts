@@ -8,8 +8,22 @@ export class TtsVoiceOption {
     label!: string;
 }
 
+export class TtsEngineOption {
+    @ApiProperty({ example: 'vieneu' })
+    id!: string;
+
+    @ApiProperty()
+    label!: string;
+
+    @ApiProperty({ description: 'false với VieNeu: tốc độ % không đổi nhịp đọc' })
+    rateApplies!: boolean;
+
+    @ApiProperty({ type: [TtsVoiceOption] })
+    voices!: TtsVoiceOption[];
+}
+
 export class TtsSettingsResponse {
-    @ApiProperty({ example: 'edge-tts' })
+    @ApiProperty({ example: 'vieneu' })
     engine!: string;
 
     @ApiProperty()
@@ -23,4 +37,7 @@ export class TtsSettingsResponse {
 
     @ApiProperty({ type: [TtsVoiceOption] })
     voices!: TtsVoiceOption[];
+
+    @ApiProperty({ type: [TtsEngineOption] })
+    engines!: TtsEngineOption[];
 }

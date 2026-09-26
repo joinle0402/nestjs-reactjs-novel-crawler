@@ -62,7 +62,14 @@ export function TtsRunModal({ open, novelId, request, onClose }: TtsRunModalProp
     const missing = countsQuery.data?.missing ?? 0;
     const failed = countsQuery.data?.failed ?? 0;
     const chapterPreview = scope === 'chapters' ? rangeQuery.data?.chapters : null;
-    const rateValid = /^[+-]\d+%$/.test(rate.trim());
+    const engines = settingsQuery.data?.engines ?? [];
+    const selectedEngine = engines.find((item) => item.id === engine);
+    const rateApplies = selectedEngine?.rateApplies !== false;
+    const voiceOptions = (selectedEngine?.voices ?? settingsQuery.data?.voices ?? []).map((item) => ({
+        value: item.id,
+        label: item.label,
+    }));
+    const rateValid = !rateApplies || /^[+-]\d+%$/.test(rate.trim());
     const scopeWillRun = scope === 'missing' ? missing : scope === 'failed' ? failed : (chapterPreview?.willRun ?? 0);
     const rangeError =
         scope === 'chapters'
@@ -154,25 +161,43 @@ export function TtsRunModal({ open, novelId, request, onClose }: TtsRunModalProp
                     </Space>
                     <Form layout="vertical" disabled={!customize} component={false}>
                         <Form.Item label="Engine" style={{ marginBottom: 8 }}>
-                            <Select value={engine} options={[{ value: 'edge-tts', label: 'edge-tts' }]} onChange={setEngine} />
-                        </Form.Item>
-                        <Form.Item label="Giọng" style={{ marginBottom: 8 }}>
                             <Select
-                                value={voice || undefined}
-                                options={(settingsQuery.data?.voices ?? []).map((item) => ({
+                                value={engine}
+                                options={engines.map((item) => ({
                                     value: item.id,
                                     label: item.label,
                                 }))}
-                                onChange={setVoice}
+                                onChange={(next: string) => {
+                                    setEngine(next);
+                                    const found = engines.find((item) => item.id === next);
+                                    const voices = found?.voices ?? [];
+                                    if (!voices.some((item) => item.id === voice)) {
+                                        setVoice(voices[0]?.id ?? '');
+                                    }
+                                }}
                             />
+                        </Form.Item>
+                        <Form.Item label="Giọng" style={{ marginBottom: 8 }}>
+                            <Select value={voice || undefined} options={voiceOptions} onChange={setVoice} />
                         </Form.Item>
                         <Form.Item
                             label="Tốc độ"
                             style={{ marginBottom: 8 }}
-                            validateStatus={customize && rate.trim() && !rateValid ? 'error' : undefined}
-                            help={customize && rate.trim() && !rateValid ? 'Dạng +50% hoặc -20%' : undefined}
+                            validateStatus={customize && rateApplies && rate.trim() && !rateValid ? 'error' : undefined}
+                            help={
+                                !rateApplies
+                                    ? 'VieNeu đọc theo nhịp của giọng.'
+                                    : customize && rate.trim() && !rateValid
+                                      ? 'Dạng +50% hoặc -20%'
+                                      : undefined
+                            }
                         >
-                            <Input value={rate} placeholder="+50%" onChange={(event) => setRate(event.target.value)} />
+                            <Input
+                                value={rate}
+                                placeholder="+50%"
+                                disabled={!rateApplies}
+                                onChange={(event) => setRate(event.target.value)}
+                            />
                         </Form.Item>
                         <Form.Item label="Nhạc nền" style={{ marginBottom: 0 }}>
                             <Switch checked={bgmEnabled} onChange={setBgmEnabled} />

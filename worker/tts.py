@@ -1,4 +1,4 @@
-"""Chuyển nội dung chương thành MP3 bằng edge-tts."""
+"""Chuyển nội dung chương thành MP3 (edge-tts hoặc VieNeu)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from typing import Callable
 
 import edge_tts
 
+from tts_vieneu_client import close_vieneu, synthesize_vieneu
 from config import (
     BGM_EXPORT_BITRATE,
     BGM_FADE_IN_MS,
@@ -81,6 +82,16 @@ _JUNK_PHRASES = (
     SELECTORS["placeholder_text"],
     SELECTORS["loading_text"],
 )
+_VIENEU_CUE_RE = re.compile(r"\[(?:cười|thở dài|hắng giọng)\]", re.IGNORECASE)
+
+
+async def _run_blocking(func, *args):
+    """Python 3.8 không có asyncio.to_thread."""
+    to_thread = getattr(asyncio, "to_thread", None)
+    if to_thread is not None:
+        return await to_thread(func, *args)
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: func(*args))
 
 
 def _normalize_tts_text(text: str) -> str:
@@ -95,6 +106,7 @@ def _normalize_tts_text(text: str) -> str:
     text = _EMOJI_RE.sub("", text)
     for phrase in _JUNK_PHRASES:
         text = re.sub(re.escape(phrase), "", text, flags=re.IGNORECASE)
+    text = _VIENEU_CUE_RE.sub("", text)
 
     kept: list[str] = []
     for raw_line in text.splitlines():
@@ -164,10 +176,14 @@ async def _text_to_mp3(
     text: str,
     output_path: Path,
     *,
+    engine: str = "edge-tts",
     voice: str = TTS_VOICE,
     rate: str = TTS_RATE,
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    if engine == "vieneu":
+        await _run_blocking(synthesize_vieneu, text, output_path, voice)
+        return
     communicate = edge_tts.Communicate(text, voice, rate=rate)
     await communicate.save(str(output_path))
     if TTS_REQUEST_DELAY_SEC > 0:
@@ -178,13 +194,14 @@ async def _text_to_mp3_with_retry(
     text: str,
     output_path: Path,
     *,
+    engine: str = "edge-tts",
     voice: str = TTS_VOICE,
     rate: str = TTS_RATE,
 ) -> None:
     last_exc: Exception | None = None
     for attempt in range(TTS_MAX_RETRIES):
         try:
-            await _text_to_mp3(text, output_path, voice=voice, rate=rate)
+            await _text_to_mp3(text, output_path, engine=engine, voice=voice, rate=rate)
             return
         except Exception as exc:
             last_exc = exc
@@ -350,12 +367,13 @@ async def _tts_single_chunk(
     output_path: Path,
     chunk_sem: asyncio.Semaphore,
     *,
+    engine: str,
     voice: str,
     rate: str,
     on_chunk_done: Callable[[int], None] | None = None,
 ) -> None:
     async with chunk_sem:
-        await _text_to_mp3_with_retry(text, output_path, voice=voice, rate=rate)
+        await _text_to_mp3_with_retry(text, output_path, engine=engine, voice=voice, rate=rate)
         if on_chunk_done:
             on_chunk_done(len(text))
 
@@ -366,6 +384,7 @@ async def _tts_chapter_content(
     output_path: Path,
     chunk_sem: asyncio.Semaphore,
     *,
+    engine: str,
     voice: str,
     rate: str,
     quiet: bool = False,
@@ -382,14 +401,14 @@ async def _tts_chapter_content(
         _log_tts_progress(ch.chapter_number, ch.title, done, total, quiet=quiet)
 
     if not ENABLE_TTS_CHUNK or chars_total <= TTS_CHUNK_SIZE:
-        await _text_to_mp3_with_retry(content, output_path, voice=voice, rate=rate)
+        await _text_to_mp3_with_retry(content, output_path, engine=engine, voice=voice, rate=rate)
         increment_tts_chars_done(ch.id, chars_total)
         _log_tts_progress(ch.chapter_number, ch.title, chars_total, chars_total, quiet=quiet)
         return
 
     chunks = _split_text_into_chunks(content)
     if len(chunks) == 1:
-        await _text_to_mp3_with_retry(content, output_path, voice=voice, rate=rate)
+        await _text_to_mp3_with_retry(content, output_path, engine=engine, voice=voice, rate=rate)
         increment_tts_chars_done(ch.id, chars_total)
         _log_tts_progress(ch.chapter_number, ch.title, chars_total, chars_total, quiet=quiet)
         return
@@ -406,6 +425,7 @@ async def _tts_chapter_content(
                     chunk_text,
                     chunk_path,
                     chunk_sem,
+                    engine=engine,
                     voice=voice,
                     rate=rate,
                     on_chunk_done=_on_chunk_done,
@@ -424,6 +444,7 @@ async def _tts_chapter(
     chapter_sem: asyncio.Semaphore,
     chunk_sem: asyncio.Semaphore,
     *,
+    engine: str,
     voice: str,
     rate: str,
     use_bgm: bool,
@@ -435,7 +456,14 @@ async def _tts_chapter(
             print(f"  [{idx}/{total}] ({pct}%) TTS: {ch.title}", flush=True)
         try:
             await _tts_chapter_content(
-                ch, ch.content, output_path, chunk_sem, voice=voice, rate=rate, quiet=quiet
+                ch,
+                ch.content,
+                output_path,
+                chunk_sem,
+                engine=engine,
+                voice=voice,
+                rate=rate,
+                quiet=quiet,
             )
             if use_bgm:
                 _mix_background_music_or_skip(output_path, quiet=quiet)
@@ -443,8 +471,10 @@ async def _tts_chapter(
                 raise RuntimeError(f"Không tạo được file MP3: {output_path}")
             update_chapter_mp3(ch.id, str(output_path))
             return output_path
-        except Exception:
+        except Exception as exc:
             update_tts_status(ch.id, STATUS_FAILED)
+            if not quiet:
+                print(f"[TTS Lỗi] Ch.{ch.chapter_number} ({ch.title}): {exc}", flush=True)
             raise
 
 
@@ -452,6 +482,7 @@ async def _generate_all_mp3(
     chapters: list[Chapter],
     novel_dir: Path,
     *,
+    engine: str,
     voice: str,
     rate: str,
     use_bgm: bool,
@@ -472,6 +503,7 @@ async def _generate_all_mp3(
                 total,
                 chapter_sem,
                 chunk_sem,
+                engine=engine,
                 voice=voice,
                 rate=rate,
                 use_bgm=use_bgm,
@@ -494,6 +526,21 @@ async def _generate_all_mp3(
     return success, failed
 
 
+def synthesize_clip(
+    text: str,
+    output_path: Path,
+    *,
+    engine: str,
+    voice: str,
+    rate: str,
+) -> None:
+    """Một đoạn ngắn, không nhạc nền. Dùng cho nút nghe thử trên trang cài đặt."""
+    normalized = _normalize_tts_text(text)
+    if not normalized:
+        raise ValueError("Văn bản thử giọng rỗng sau khi chuẩn hóa")
+    asyncio.run(_text_to_mp3(normalized, output_path, engine=engine, voice=voice, rate=rate))
+
+
 def chapter_to_mp3(text: str, output_path: Path) -> None:
     from config import load_tts_settings
 
@@ -505,6 +552,7 @@ def chapter_to_mp3(text: str, output_path: Path) -> None:
         _text_to_mp3_with_retry(
             text,
             output_path,
+            engine=str(settings["engine"]),
             voice=str(settings["voice"]),
             rate=str(settings["rate"]),
         )
@@ -520,6 +568,7 @@ def generate_mp3_for_novel(
     voice: str | None = None,
     rate: str | None = None,
     *,
+    engine: str | None = None,
     quiet: bool = False,
     use_bgm: bool | None = None,
 ) -> list[Path]:
@@ -531,6 +580,7 @@ def generate_mp3_for_novel(
     from config import load_tts_settings
 
     settings = load_tts_settings()
+    engine = engine or str(settings["engine"])
     voice = voice or str(settings["voice"])
     rate = rate or str(settings["rate"])
     if use_bgm is None:
@@ -579,10 +629,13 @@ def generate_mp3_for_novel(
     if ENABLE_TTS_CHUNK:
         chunk_info = f", chunk concurrency={TTS_CHUNK_CONCURRENCY}"
     if not quiet:
-        print(
-            f"Tạo MP3 cho {len(chapters)} chương "
-            f"(song song, tối đa {TTS_CONCURRENCY}{chunk_info}, voice={voice}, rate={rate})..."
-        )
+        if engine == "vieneu":
+            print(f"Tạo MP3 cho {len(chapters)} chương (VieNeu, voice={voice}{chunk_info})...")
+        else:
+            print(
+                f"Tạo MP3 cho {len(chapters)} chương "
+                f"(song song, tối đa {TTS_CONCURRENCY}{chunk_info}, voice={voice}, rate={rate})..."
+            )
 
     novel_dir = Path(MP3_OUTPUT_DIR) / _safe_filename(novel_title)
     try:
@@ -590,6 +643,7 @@ def generate_mp3_for_novel(
             _generate_all_mp3(
                 chapters,
                 novel_dir,
+                engine=engine,
                 voice=voice,
                 rate=rate,
                 use_bgm=mix_bgm,
@@ -597,6 +651,7 @@ def generate_mp3_for_novel(
             )
         )
     except KeyboardInterrupt:
+        close_vieneu()
         reset_processing_tts_chapters(novel_id)
         if not quiet:
             print(

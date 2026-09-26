@@ -38,8 +38,8 @@ a {
 }
 
 .bottom-player--tts-only {
-    min-height: 36px;
-    padding: 0 16px;
+    min-height: 48px;
+    padding: 6px 16px;
     justify-content: center;
 }
 
@@ -62,6 +62,113 @@ a {
     gap: 12px;
     min-height: 36px;
     width: 100%;
+}
+
+.tts-job-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 42px;
+    width: 100%;
+    padding: 2px 0;
+}
+
+.tts-job-bar__info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.tts-job-bar__engine {
+    display: inline-flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.tts-job-bar__title {
+    max-width: 260px;
+    font-size: 13.5px;
+}
+
+.tts-job-bar__title a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.tts-job-bar__title a:hover {
+    color: #1677ff;
+}
+
+.tts-job-bar__metrics {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 13px;
+}
+
+.tts-job-bar__sub {
+    color: #434343;
+    background: #f5f5f5;
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid #e8e8e8;
+}
+
+.tts-job-bar__sub--total {
+    color: #8c8c8c;
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+.tts-job-bar__progress-box {
+    width: 220px;
+    flex-shrink: 0;
+}
+
+.tts-job-bar__actions {
+    flex-shrink: 0;
+}
+
+.tts-log-viewer {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 12.5px;
+    padding: 12px;
+    border-radius: 6px;
+    height: 100%;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tts-log-line {
+    word-break: break-all;
+    white-space: pre-wrap;
+    line-height: 1.4;
+}
+
+.tts-log-line--err {
+    color: #ff7875;
+    background: rgba(255, 77, 79, 0.1);
+    padding: 2px 4px;
+    border-radius: 2px;
+}
+
+.tts-log-line--ok {
+    color: #95de64;
+}
+
+.tts-log-empty {
+    color: #8c8c8c;
+    text-align: center;
+    margin-top: 40px;
 }
 
 .bottom-player--with-job .tts-job-line {

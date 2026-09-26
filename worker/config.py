@@ -77,7 +77,7 @@ BGM_FADE_IN_MS = 2000
 BGM_FADE_OUT_MS = 3000
 BGM_EXPORT_BITRATE = "128k"
 
-# TTS — edge-tts (miễn phí, giọng neural tiếng Việt)
+# TTS — engine và giọng nằm ở tts_settings.json (edge-tts hoặc vieneu).
 # Giọng, tốc độ và bật/tắt nhạc nền chỉ nằm ở file này.
 # Web (Cài đặt) và console cùng đọc/ghi; BGM_PATH bên trên vẫn là file nhạc.
 TTS_SETTINGS_PATH = WORKER_DIR / "tts_settings.json"

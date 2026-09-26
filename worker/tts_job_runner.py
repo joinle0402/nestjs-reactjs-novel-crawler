@@ -146,7 +146,7 @@ def run_job(job_id: int) -> None:
             use_bgm = False
         print(
             f"[TTS job {job_id}] {novel.title} scope={job['scope']} "
-            f"voice={job['voice']} rate={job['rate']} bgm={use_bgm} "
+            f"engine={job['engine']} voice={job['voice']} rate={job['rate']} bgm={use_bgm} "
             f"chapters={len(numbers)}",
             flush=True,
         )
@@ -154,6 +154,7 @@ def run_job(job_id: int) -> None:
             novel.id,
             novel.title,
             chapter_numbers=frozenset(numbers),
+            engine=str(job["engine"]),
             voice=str(job["voice"]),
             rate=str(job["rate"]),
             use_bgm=use_bgm,

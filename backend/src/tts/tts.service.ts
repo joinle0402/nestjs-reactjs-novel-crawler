@@ -1,12 +1,15 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
+import { existsSync, openSync, readSync, closeSync } from 'fs';
+import { stat } from 'fs/promises';
+import path from 'path';
 import { throwIf, throwUnless } from 'src/common/utils/throw-if';
 import { JobStatus } from 'src/common/enums/job-status.enum';
 import { Chapter } from 'src/chapters/chapters.entity';
 import { NovelsService } from 'src/novels/novels.service';
-import { TtsJob, TTS_ENGINE, type TtsJobStatus, type TtsScope } from './entities/tts-job.entity';
-import { TtsSettingsService } from './tts-settings.service';
+import { TtsJob, TTS_ENGINES, type TtsEngine, type TtsJobStatus, type TtsScope } from './entities/tts-job.entity';
+import { resolveWorkerDir, TtsSettingsService } from './tts-settings.service';
 import { StartTtsJobRequest } from './dtos/requests/start-tts-job.request';
 import { TtsJobProgress, TtsJobResponse } from './dtos/responses/tts-job.response';
 import { TtsChapterPreview, TtsPreviewResponse } from './dtos/responses/tts-preview.response';
@@ -30,6 +33,7 @@ type ChapterFact = {
     hasMp3: boolean;
     ttsCharsDone: number;
     ttsCharsTotal: number;
+    contentLength: number;
 };
 
 @Injectable()
@@ -64,10 +68,8 @@ export class TtsService {
         const voice = request.voice ?? settings.voice;
         const rate = request.rate ?? settings.rate;
         const bgmEnabled = request.bgmEnabled ?? settings.bgmEnabled;
-        throwUnless(engine === TTS_ENGINE, 'Hiện chỉ hỗ trợ engine edge-tts');
-        if (request.voice !== undefined) {
-            throwUnless(this.settingsService.allowedVoices(settings.voice).has(request.voice), 'Giọng không thuộc edge-tts');
-        }
+        throwUnless(TTS_ENGINES.includes(engine as TtsEngine), 'Engine TTS không được hỗ trợ');
+        throwUnless(this.settingsService.allowedVoices(engine, settings.voice).has(voice), 'Giọng không thuộc engine đã chọn');
 
         const facts = await this.loadFacts(novel.id);
         const resolved = this.resolveScope(facts, request.scope, request.chapterRange);
@@ -320,15 +322,38 @@ export class TtsService {
                 ? Math.floor((current.ttsCharsDone * 100) / current.ttsCharsTotal)
                 : 0
             : null;
-        let detail = `xong ${done}/${total}`;
+
+        const currentCharsDone = current ? current.ttsCharsDone : null;
+        const currentCharsTotal = current ? (current.ttsCharsTotal || current.contentLength || 0) : null;
+
+        const totalChars = scoped.reduce((sum, f) => sum + (f.ttsCharsTotal || f.contentLength || 0), 0);
+        const totalCharsDone = scoped.reduce((sum, f) => {
+            if (f.hasMp3) {
+                return sum + (f.ttsCharsTotal || f.contentLength || 0);
+            }
+            if (f.ttsStatus === JobStatus.PROCESSING) {
+                return sum + f.ttsCharsDone;
+            }
+            return sum;
+        }, 0);
+
+        let detail = `xong ${done}/${total} chương`;
         if (current && currentPercent != null) {
-            detail = `Ch.${current.chapterNumber} — ${currentPercent}%, xong ${done}/${total}`;
+            const charsInfo =
+                currentCharsTotal && currentCharsTotal > 0
+                    ? `${(currentCharsDone || 0).toLocaleString()}/${currentCharsTotal.toLocaleString()} chữ (${currentPercent}%)`
+                    : `${currentPercent}%`;
+            detail = `Chương ${current.chapterNumber}: ${charsInfo} — xong ${done}/${total}`;
         }
         return {
             done,
             total,
             currentChapterNumber: current?.chapterNumber ?? null,
             currentPercent,
+            currentCharsDone,
+            currentCharsTotal,
+            totalCharsDone,
+            totalChars,
             detail,
         };
     }
@@ -361,10 +386,34 @@ export class TtsService {
                     hasMp3: mp3FileReady(typeof mp3Path === 'string' ? mp3Path : null),
                     ttsCharsDone: Number(this.raw(row, 'ttsCharsDone') ?? 0),
                     ttsCharsTotal: Number(this.raw(row, 'ttsCharsTotal') ?? 0),
+                    contentLength: Number.isFinite(contentLength) ? contentLength : 0,
                 };
             })
             .filter((fact) => Number.isInteger(fact.chapterNumber) && fact.chapterNumber > 0)
             .sort((a, b) => a.chapterNumber - b.chapterNumber);
+    }
+
+    async getLogs(maxLines = 150): Promise<{ lines: string[] }> {
+        const logPath = path.join(resolveWorkerDir(), 'logs', 'tts_worker.log');
+        if (!existsSync(logPath)) {
+            return { lines: [] };
+        }
+        try {
+            const stats = await stat(logPath);
+            const bytesToRead = Math.min(stats.size, 128 * 1024);
+            const buffer = Buffer.alloc(bytesToRead);
+            const fd = openSync(logPath, 'r');
+            try {
+                readSync(fd, buffer, 0, bytesToRead, Math.max(0, stats.size - bytesToRead));
+            } finally {
+                closeSync(fd);
+            }
+            const content = buffer.toString('utf-8');
+            const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
+            return { lines: lines.slice(-maxLines) };
+        } catch (error) {
+            return { lines: [`Không thể đọc log: ${error}`] };
+        }
     }
 
     private raw(row: Record<string, unknown>, key: string): unknown {

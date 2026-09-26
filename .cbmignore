@@ -1,0 +1,45 @@
+﻿# Dependencies
+node_modules/
+.venv/
+.venv*/
+venv/
+__pycache__/
+*.py[cod]
+
+# Build outputs & caches
+dist/
+build/
+backend/dist/
+frontend/dist/
+*.tsbuildinfo
+.nyc_output/
+coverage/
+
+# Logs & temp
+logs/
+*.log
+worker/logs/
+.temp/
+.tmp/
+
+# Data & media files
+*.mp3
+*.wav
+*.db
+*.sqlite
+*.sqlite3
+worker/output/
+novels.db
+*.db-journal
+
+# Secrets & environment
+.env
+.env.*
+!.env.example
+client_secret.json
+credentials.json
+token.json
+
+# IDE
+.idea/
+.vscode/

@@ -1,0 +1,14 @@
+---
+description: Bảo mật biến môi trường và tiết kiệm token
+alwaysApply: true
+---
+
+# Bảo Mật Biến Môi Trường (Env & Secrets)
+- Agent TUYỆT ĐỐI KHÔNG in, hiển thị, hoặc ghi log giá trị của các biến môi trường nhạy cảm (như HF_TOKEN, API keys, passwords, database credentials) ra màn hình chat, console, log file hay terminal.
+- Khi cần sử dụng biến môi trường (ví dụ `HF_TOKEN` hoặc `HUGGINGFACE_HUB_TOKEN`), Agent chỉ tham chiếu đến tên biến (ví dụ: `os.environ.get("HF_TOKEN")` hoặc `process.env.HF_TOKEN`), không bao giờ hardcode giá trị thật vào code hay file commit.
+- Không bao giờ hiển thị nội dung các file `.env` lên màn hình chat.
+
+# Tiết Kiệm Token (Token Saver Policy)
+- Luôn ưu tiên dùng MCP `user-codebase-memory-mcp` (`search_graph`, `trace_path`, `get_code_snippet`) thay vì grep hoặc đọc file toàn bộ.
+- Tránh đọc toàn bộ file nếu file dài (> 100 dòng); chỉ đọc đúng đoạn cần thiết (`offset`, `limit`) hoặc dùng `get_code_snippet`.
+- Trả lời thẳng vào trọng tâm, giải thích súc tích, không lặp lại code cũ không cần thiết.

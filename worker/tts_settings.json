@@ -1,6 +1,6 @@
 {
-  "engine": "edge-tts",
-  "voice": "vi-VN-HoaiMyNeural",
+  "engine": "vieneu",
+  "voice": "Ngọc Huyền",
   "rate": "+50%",
   "bgmEnabled": true
 }

@@ -64,7 +64,11 @@ def acquire_lock() -> bool:
 
 def read_runner_pid() -> int | None:
     try:
-        return int(PID_PATH.read_text(encoding="utf-8").strip())
+        pid = int(PID_PATH.read_text(encoding="utf-8").strip())
+        if not pid_alive(pid):
+            PID_PATH.unlink(missing_ok=True)
+            return None
+        return pid
     except (OSError, ValueError):
         return None
 
@@ -75,11 +79,18 @@ def pid_alive(pid: int) -> bool:
     if sys.platform == "win32":
         import ctypes
 
-        handle = ctypes.windll.kernel32.OpenProcess(0x1000, 0, pid)
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
         if not handle:
             return False
-        ctypes.windll.kernel32.CloseHandle(handle)
-        return True
+        try:
+            exit_code = ctypes.c_ulong()
+            if ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                STILL_ACTIVE = 259
+                return exit_code.value == STILL_ACTIVE
+            return False
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except OSError:
@@ -120,21 +131,32 @@ def _interrupt_proc(proc: subprocess.Popen) -> None:
 
 
 def _interrupt_pid(pid: int) -> None:
-    try:
-        if sys.platform == "win32":
-            os.kill(pid, signal.CTRL_BREAK_EVENT)
-        else:
+    if not pid_alive(pid):
+        return
+    if sys.platform == "win32":
+        try:
+            subprocess.run(["taskkill", "/PID", str(pid), "/T"], capture_output=True)
+        except Exception:
+            pass
+    else:
+        try:
             os.kill(pid, signal.SIGINT)
-    except OSError:
-        pass
+        except OSError:
+            pass
     for _ in range(16):
         if not pid_alive(pid):
             return
         time.sleep(0.5)
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except OSError:
-        pass
+    if sys.platform == "win32":
+        try:
+            subprocess.run(["taskkill", "/F", "/PID", str(pid), "/T"], capture_output=True)
+        except Exception:
+            pass
+    else:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
 
 
 def _after_exit(job_id: int, novel_id: int) -> None:

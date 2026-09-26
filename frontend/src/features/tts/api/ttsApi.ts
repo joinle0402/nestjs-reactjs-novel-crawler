@@ -8,12 +8,20 @@ export type TtsVoiceOption = {
     label: string;
 };
 
+export type TtsEngineOption = {
+    id: string;
+    label: string;
+    rateApplies: boolean;
+    voices: TtsVoiceOption[];
+};
+
 export type TtsSettings = {
     engine: string;
     voice: string;
     rate: string;
     bgmEnabled: boolean;
     voices: TtsVoiceOption[];
+    engines: TtsEngineOption[];
 };
 
 export type UpdateTtsSettingsBody = {
@@ -23,11 +31,22 @@ export type UpdateTtsSettingsBody = {
     bgmEnabled: boolean;
 };
 
+export type TtsSampleBody = {
+    engine: string;
+    voice: string;
+    rate: string;
+    text: string;
+};
+
 export type TtsJobProgress = {
     done: number;
     total: number;
     currentChapterNumber: number | null;
     currentPercent: number | null;
+    currentCharsDone: number | null;
+    currentCharsTotal: number | null;
+    totalCharsDone: number;
+    totalChars: number;
     detail: string;
 };
 
@@ -80,6 +99,28 @@ export const getTtsSettings = () => axiosClient.get<TtsSettings>('/tts/settings'
 
 export const updateTtsSettings = (body: UpdateTtsSettingsBody) => axiosClient.put<TtsSettings>('/tts/settings', body);
 
+export const synthesizeTtsSample = (body: TtsSampleBody) =>
+    axiosClient.post<Blob>('/tts/sample', body, {
+        responseType: 'blob',
+        timeout: 10 * 60 * 1000,
+    });
+
+export async function getSavedTtsSample(params: { engine: string; voice: string; rate: string }): Promise<Blob | null> {
+    try {
+        const blob = await axiosClient.get<Blob>('/tts/sample/saved', {
+            params,
+            responseType: 'blob',
+            timeout: 20000,
+        });
+        if (!(blob instanceof Blob) || blob.size < 100) {
+            return null;
+        }
+        return blob;
+    } catch {
+        return null;
+    }
+}
+
 export const getTtsPreview = (novelId: number, chapterRange?: string) =>
     axiosClient.get<TtsPreview>('/tts/preview', {
         params: {
@@ -89,6 +130,11 @@ export const getTtsPreview = (novelId: number, chapterRange?: string) =>
     });
 
 export const getCurrentTtsJob = () => axiosClient.get<TtsJob | null>('/tts/jobs/current');
+
+export const getTtsLogs = (lines = 150) =>
+    axiosClient.get<{ lines: string[] }>('/tts/jobs/logs', {
+        params: { lines },
+    });
 
 export const startTtsJob = (body: StartTtsJobBody) => axiosClient.post<TtsJob>('/tts/jobs', body);
 

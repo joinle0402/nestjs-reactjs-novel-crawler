@@ -1,8 +1,13 @@
-import { Body, Controller, Get, HttpCode, Post, Put, Query, ParseIntPipe } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, NotFoundException, Post, Put, Query, ParseIntPipe, StreamableFile } from '@nestjs/common';
+import { ApiOkResponse, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
+import { createReadStream } from 'fs';
+import { unlink } from 'fs/promises';
 import { TtsService } from './tts.service';
 import { TtsSettingsService } from './tts-settings.service';
+import { TtsSampleService } from './tts-sample.service';
 import { StartTtsJobRequest } from './dtos/requests/start-tts-job.request';
+import { TtsSampleRequest } from './dtos/requests/tts-sample.request';
+import { TtsSavedSampleQuery } from './dtos/requests/tts-saved-sample.query';
 import { UpdateTtsSettingsRequest } from './dtos/requests/update-tts-settings.request';
 import { TtsJobResponse } from './dtos/responses/tts-job.response';
 import { TtsPreviewResponse } from './dtos/responses/tts-preview.response';
@@ -14,6 +19,7 @@ export class TtsController {
     constructor(
         private readonly ttsService: TtsService,
         private readonly settingsService: TtsSettingsService,
+        private readonly sampleService: TtsSampleService,
     ) {}
 
     @Get('settings')
@@ -28,6 +34,43 @@ export class TtsController {
     @ApiOkResponse({ type: TtsSettingsResponse })
     updateSettings(@Body() request: UpdateTtsSettingsRequest): Promise<TtsSettingsResponse> {
         return this.settingsService.update(request);
+    }
+
+    @Get('sample/saved')
+    @ApiOperation({ summary: 'MP3 mẫu đã lưu cho câu thử mặc định. 404 nếu chưa có file.' })
+    @ApiProduces('audio/mpeg')
+    @ApiOkResponse({ description: 'File MP3 đã lưu' })
+    savedSample(@Query() query: TtsSavedSampleQuery): StreamableFile {
+        const filePath = this.sampleService.savedPath(query);
+        if (!filePath) {
+            throw new NotFoundException('Chưa có mẫu giọng cho câu này');
+        }
+        return this.audioFile(filePath, false);
+    }
+
+    @Post('sample')
+    @HttpCode(200)
+    @ApiOperation({ summary: 'MP3 ngắn để nghe thử giọng đang chọn. Câu mẫu mặc định dùng file đã lưu.' })
+    @ApiProduces('audio/mpeg')
+    @ApiOkResponse({ description: 'File MP3 mẫu' })
+    async sample(@Body() request: TtsSampleRequest): Promise<StreamableFile> {
+        const created = await this.sampleService.create(request);
+        return this.audioFile(created.filePath, created.temporary);
+    }
+
+    private audioFile(filePath: string, temporary: boolean): StreamableFile {
+        const stream = createReadStream(filePath);
+        if (temporary) {
+            const cleanup = () => {
+                void unlink(filePath).catch(() => undefined);
+            };
+            stream.on('close', cleanup);
+            stream.on('error', cleanup);
+        }
+        return new StreamableFile(stream, {
+            type: 'audio/mpeg',
+            disposition: 'inline; filename="tts-sample.mp3"',
+        });
     }
 
     @Get('preview')
@@ -45,6 +88,12 @@ export class TtsController {
     @ApiOkResponse({ type: TtsJobResponse })
     current(): Promise<TtsJobResponse | null> {
         return this.ttsService.getCurrent();
+    }
+
+    @Get('jobs/logs')
+    @ApiOperation({ summary: 'Log gần nhất của worker TTS' })
+    logs(@Query('lines') lines?: number): Promise<{ lines: string[] }> {
+        return this.ttsService.getLogs(lines ? Number(lines) : 150);
     }
 
     @Post('jobs')

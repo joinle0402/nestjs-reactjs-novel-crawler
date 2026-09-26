@@ -1,15 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import { message } from 'antd';
+import { Modal, message } from 'antd';
 import {
     getCurrentTtsJob,
+    getTtsLogs,
     getTtsPreview,
     getTtsSettings,
     isActiveTtsJob,
     startTtsJob,
     stopTtsJob,
+    synthesizeTtsSample,
     updateTtsSettings,
     type StartTtsJobBody,
+    type TtsSampleBody,
     type UpdateTtsSettingsBody,
 } from '@/features/tts/api/ttsApi.ts';
 import { chapterKeys } from '@/features/chapters/hooks/useChaptersQuery.ts';
@@ -17,12 +20,13 @@ import { novelKeys } from '@/features/novels/hooks/useNovelsQuery.ts';
 
 export const ttsKeys = {
     current: ['tts', 'current'] as const,
+    logs: ['tts', 'logs'] as const,
     settings: ['tts', 'settings'] as const,
     previews: ['tts', 'preview'] as const,
     preview: (novelId: number, chapterRange?: string) => ['tts', 'preview', novelId, chapterRange ?? ''] as const,
 };
 
-const POLL_MS = 3000;
+const POLL_MS = 2500;
 
 export function useCurrentTtsJobQuery() {
     return useQuery({
@@ -30,6 +34,15 @@ export function useCurrentTtsJobQuery() {
         queryFn: getCurrentTtsJob,
         staleTime: 0,
         refetchInterval: (query) => (isActiveTtsJob(query.state.data) ? POLL_MS : false),
+    });
+}
+
+export function useTtsLogsQuery(enabled = true) {
+    return useQuery({
+        queryKey: ttsKeys.logs,
+        queryFn: () => getTtsLogs(200),
+        enabled,
+        refetchInterval: 3000,
     });
 }
 
@@ -56,7 +69,10 @@ export function useTtsJobWatch() {
         toasted.current = key;
         wasActive.current = false;
         if (job.status === 'failed') {
-            message.error(job.errorMessage || 'Tạo audio thất bại');
+            Modal.error({
+                title: 'Tạo audio thất bại',
+                content: job.errorMessage || 'Worker gặp lỗi khi xử lý audio. Vui lòng kiểm tra tab log.',
+            });
         } else if (job.status === 'completed') {
             message.success('Đã tạo audio xong');
         }
@@ -105,6 +121,12 @@ export function useStopTtsJobMutation() {
             void queryClient.invalidateQueries({ queryKey: novelKeys.all });
             void queryClient.invalidateQueries({ queryKey: ttsKeys.previews });
         },
+    });
+}
+
+export function useTtsSampleMutation() {
+    return useMutation({
+        mutationFn: (body: TtsSampleBody) => synthesizeTtsSample(body),
     });
 }
 

@@ -14,6 +14,18 @@ export class TtsJobProgress {
     @ApiPropertyOptional({ nullable: true })
     currentPercent!: number | null;
 
+    @ApiPropertyOptional({ nullable: true })
+    currentCharsDone!: number | null;
+
+    @ApiPropertyOptional({ nullable: true })
+    currentCharsTotal!: number | null;
+
+    @ApiProperty()
+    totalCharsDone!: number;
+
+    @ApiProperty()
+    totalChars!: number;
+
     @ApiProperty({ example: 'Ch.12 — 40%, xong 8/42' })
     detail!: string;
 }

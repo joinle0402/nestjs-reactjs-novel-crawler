@@ -6,11 +6,12 @@ import { TtsJob } from './entities/tts-job.entity';
 import { TtsController } from './tts.controller';
 import { TtsService } from './tts.service';
 import { TtsSettingsService } from './tts-settings.service';
+import { TtsSampleService } from './tts-sample.service';
 import { TtsWorkerService } from './tts-worker.service';
 
 @Module({
     imports: [TypeOrmModule.forFeature([TtsJob, Chapter]), NovelsModule],
     controllers: [TtsController],
-    providers: [TtsService, TtsSettingsService, TtsWorkerService],
+    providers: [TtsService, TtsSettingsService, TtsSampleService, TtsWorkerService],
 })
 export class TtsModule {}

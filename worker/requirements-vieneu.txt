@@ -1,0 +1,3 @@
+# Cài vào worker/.venv-vieneu bằng Python >= 3.10.
+# Worker chính vẫn chạy Python 3.8 và gọi môi trường này qua tts_vieneu.py.
+vieneu>=3.8.3

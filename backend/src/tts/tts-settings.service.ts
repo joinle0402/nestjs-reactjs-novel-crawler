@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { existsSync } from 'fs';
 import { readFile, rename, writeFile } from 'fs/promises';
 import path from 'path';
-import { EDGE_TTS_VOICES, TTS_ENGINE } from './entities/tts-job.entity';
+import { TTS_ENGINE, TTS_ENGINES, voicesForEngine, type TtsEngine } from './entities/tts-job.entity';
 import { TtsSettingsResponse } from './dtos/responses/tts-settings.response';
 import { UpdateTtsSettingsRequest } from './dtos/requests/update-tts-settings.request';
 import { throwUnless } from 'src/common/utils/throw-if';
@@ -36,7 +36,8 @@ export class TtsSettingsService {
         const settings = await this.read();
         return {
             ...settings,
-            voices: this.voiceOptions(settings.voice),
+            voices: this.voiceOptions(settings.engine, settings.voice),
+            engines: this.engineOptions(),
         };
     }
 
@@ -52,9 +53,10 @@ export class TtsSettingsService {
 
     async update(request: UpdateTtsSettingsRequest): Promise<TtsSettingsResponse> {
         const current = await this.read();
-        throwUnless(this.allowedVoices(current.voice).has(request.voice), 'Giọng không thuộc edge-tts');
+        throwUnless(TTS_ENGINES.includes(request.engine as TtsEngine), 'Engine TTS không được hỗ trợ');
+        throwUnless(this.allowedVoices(request.engine, current.voice).has(request.voice), 'Giọng không thuộc engine đã chọn');
         const next: TtsSettings = {
-            engine: TTS_ENGINE,
+            engine: request.engine,
             voice: request.voice,
             rate: request.rate,
             bgmEnabled: request.bgmEnabled,
@@ -62,20 +64,30 @@ export class TtsSettingsService {
         await this.write(next);
         return {
             ...next,
-            voices: this.voiceOptions(next.voice),
+            voices: this.voiceOptions(next.engine, next.voice),
+            engines: this.engineOptions(),
         };
     }
 
-    allowedVoices(currentVoice?: string): Set<string> {
-        const allowed = new Set(EDGE_TTS_VOICES.map((voice) => voice.id));
-        if (currentVoice) {
+    allowedVoices(engine: string, currentVoice?: string): Set<string> {
+        const allowed = new Set(voicesForEngine(engine).map((voice) => voice.id));
+        if (engine !== 'vieneu' && currentVoice) {
             allowed.add(currentVoice);
         }
         return allowed;
     }
 
-    private voiceOptions(currentVoice: string): { id: string; label: string }[] {
-        const voices = EDGE_TTS_VOICES.map((voice) => ({ ...voice }));
+    private engineOptions(): { id: TtsEngine; label: string; rateApplies: boolean; voices: { id: string; label: string }[] }[] {
+        return TTS_ENGINES.map((engine) => ({
+            id: engine,
+            label: engine === 'vieneu' ? 'VieNeu (offline)' : 'edge-tts',
+            rateApplies: engine !== 'vieneu',
+            voices: voicesForEngine(engine).map((voice) => ({ ...voice })),
+        }));
+    }
+
+    private voiceOptions(engine: string, currentVoice: string): { id: string; label: string }[] {
+        const voices = voicesForEngine(engine).map((voice) => ({ ...voice }));
         if (!voices.some((voice) => voice.id === currentVoice)) {
             voices.push({ id: currentVoice, label: currentVoice });
         }
