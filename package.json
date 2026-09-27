@@ -1,0 +1,10 @@
+{
+  "name": "novel-crawler",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,green \"pnpm --dir backend start:dev\" \"pnpm --dir frontend dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
