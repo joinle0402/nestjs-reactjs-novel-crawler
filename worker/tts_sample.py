@@ -65,14 +65,16 @@ def _write_one(engine: str, voice: str, rate: str) -> None:
     print(f"đã lưu {path.name}", flush=True)
 
 
-def fill_cache() -> None:
+def fill_cache(engine: str | None = None) -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        for voice in _voice_ids("EDGE_TTS_VOICES"):
-            for rate in _EDGE_RATES:
-                _write_one("edge-tts", voice, rate)
-        for voice in _voice_ids("VIENEU_VOICES"):
-            _write_one("vieneu", voice, "+0%")
+        if not engine or engine == "edge-tts":
+            for voice in _voice_ids("EDGE_TTS_VOICES"):
+                for rate in _EDGE_RATES:
+                    _write_one("edge-tts", voice, rate)
+        if not engine or engine == "vieneu":
+            for voice in _voice_ids("VIENEU_VOICES"):
+                _write_one("vieneu", voice, "+0%")
     finally:
         close_vieneu()
 
@@ -87,7 +89,7 @@ def main() -> None:
     parser.add_argument("--output")
     args = parser.parse_args()
     if args.fill_cache:
-        fill_cache()
+        fill_cache(args.engine)
         return
     if not all([args.engine, args.voice, args.rate, args.text, args.output]):
         raise SystemExit("Thiếu --engine --voice --rate --text --output")

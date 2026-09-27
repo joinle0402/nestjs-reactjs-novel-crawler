@@ -74,7 +74,7 @@ export function NovelDetailPage() {
     const deleteMutation = useDeleteChapterMutation();
 
     const page = Math.max(1, Number(searchParams.get('page') ?? 1) || 1);
-    const crawlStatus = readStatusParam(searchParams.get('crawlStatus'));
+    const crawlStatus = readStatusParam(searchParams.get('crawlStatus') ?? JobStatus.COMPLETED);
     const ttsStatus = readStatusParam(searchParams.get('ttsStatus'));
     const hasMp3 = readBooleanParam(searchParams.get('hasMp3'));
 

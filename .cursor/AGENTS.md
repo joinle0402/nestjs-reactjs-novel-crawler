@@ -1,3 +1,3 @@
 # Agent Instructions
-- MCP `user-codebase-memory-mcp` is active and indexed for this project (`C-Users-ASUS-Desktop-workspace-project-novel-crawler`).
-- Always prioritize `search_graph`, `trace_path`, and `get_code_snippet` over grep/file reading.
+- Before exploring crawl or TTS, read the matching project skill: `.cursor/skills/crawler-workflow` or `.cursor/skills/tts-workflow`.
+- If a change makes a fact in that skill false, patch only the stale bullet or map row and append one changelog line. Do not rewrite the skill. Leave it unchanged when the contract is still true.

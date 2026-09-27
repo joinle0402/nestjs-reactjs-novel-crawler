@@ -13,6 +13,40 @@ WORKER_DIR = Path(__file__).resolve().parent
 _READY_TIMEOUT_SEC = 1800.0
 
 
+def _is_vieneu_cached() -> bool:
+    """Kiểm tra snapshot model VieNeu đã có sẵn trong local cache chưa."""
+    hf_home = os.environ.get("HF_HOME") or os.environ.get("HUGGINGFACE_HUB_CACHE")
+    if hf_home:
+        cache_dir = Path(hf_home)
+        if not (cache_dir / "models--pnnbao-ump--VieNeu-TTS-v3-Turbo").exists():
+            cache_dir = cache_dir / "hub"
+    else:
+        cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+
+    snapshots = cache_dir / "models--pnnbao-ump--VieNeu-TTS-v3-Turbo" / "snapshots"
+    return snapshots.is_dir() and any(snapshots.iterdir())
+
+
+def _read_env_quiet(path: Path) -> dict[str, str]:
+    """Đọc file .env an toàn mà không in log hay hiển thị token."""
+    out: dict[str, str] = {}
+    if not path.is_file():
+        return out
+    try:
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            key = k.strip()
+            val = v.strip().strip('"').strip("'")
+            if key:
+                out[key] = val
+    except Exception:
+        pass
+    return out
+
+
 def vieneu_python() -> Path:
     override = os.environ.get("VIENEU_PYTHON", "").strip()
     if override:
@@ -67,12 +101,29 @@ class _VieNeuClient:
         self._stop()
         python = vieneu_python()
         script = WORKER_DIR / "tts_vieneu.py"
-        print("[VieNeu] đang tải model (lần đầu có thể mất vài phút)...", flush=True)
+
+        # Đọc bổ sung worker/.env và backend/.env để nạp secret HF_TOKEN / HF_HUB_OFFLINE nếu process chưa có
+        file_env = _read_env_quiet(WORKER_DIR / ".env")
+        for k, v in _read_env_quiet(WORKER_DIR.parent / "backend" / ".env").items():
+            if k not in file_env:
+                file_env[k] = v
+
         env = {
+            **file_env,
             **os.environ,
             "PYTHONIOENCODING": "utf-8",
             "PYTHONUTF8": "1",
         }
+
+        # Local-first: nếu model đã có trong cache và chưa chỉ định HF_HUB_OFFLINE, bật = 1 để bỏ qua kiểm tra mạng
+        if "HF_HUB_OFFLINE" not in env and _is_vieneu_cached():
+            env["HF_HUB_OFFLINE"] = "1"
+
+        if env.get("HF_HUB_OFFLINE") == "1":
+            print("[VieNeu] Đang khởi tạo model (local cache)...", flush=True)
+        else:
+            print("[VieNeu] đang tải model (lần đầu có thể mất vài phút)...", flush=True)
+
         self._proc = subprocess.Popen(
             [str(python), "-u", str(script)],
             stdin=subprocess.PIPE,

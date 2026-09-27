@@ -76,7 +76,22 @@ def _register_custom_voices(engine) -> None:
             print(f"lỗi nạp giọng clone {voice_name}: {exc}", file=sys.stderr, flush=True)
 
 
+def _is_vieneu_cached() -> bool:
+    hf_home = os.environ.get("HF_HOME") or os.environ.get("HUGGINGFACE_HUB_CACHE")
+    if hf_home:
+        cache_dir = Path(hf_home)
+        if not (cache_dir / "models--pnnbao-ump--VieNeu-TTS-v3-Turbo").exists():
+            cache_dir = cache_dir / "hub"
+    else:
+        cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+    snapshots = cache_dir / "models--pnnbao-ump--VieNeu-TTS-v3-Turbo" / "snapshots"
+    return snapshots.is_dir() and any(snapshots.iterdir())
+
+
 def _load_engine():
+    if "HF_HUB_OFFLINE" not in os.environ and _is_vieneu_cached():
+        os.environ["HF_HUB_OFFLINE"] = "1"
+
     from vieneu import Vieneu
 
     backend = os.environ.get("VIENEU_BACKEND", "onnx").strip().lower()

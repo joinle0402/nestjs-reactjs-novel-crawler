@@ -1,19 +1,56 @@
 ---
-description: Bắt buộc dùng Codebase Memory MCP khi tra cứu code và kiến trúc
-globs: *
+description: Tra cứu code bằng Codebase Memory MCP hoặc file theo cách tiết kiệm token
 alwaysApply: true
 ---
 
-# BẮT BUỘC SỬ DỤNG CODEBASE MEMORY MCP
+# Codebase Discovery
 
-Trước khi thực hiện tìm kiếm file, đọc code hoặc tìm hiểu logic dự án:
-1. **Project Name trong Graph:** `C-Users-ASUS-Desktop-workspace-project-novel-crawler`.
-2. **Quy tắc công cụ:**
-   - TUYỆT ĐỐI KHÔNG dùng `Grep` hoặc `Read` toàn bộ file khi cần tìm định nghĩa, hàm, class, hoặc xem luồng gọi.
-   - PHẢI gọi MCP `user-codebase-memory-mcp` trước:
-     - Tìm symbol/hàm/route/class: dùng `search_graph(name_pattern="...")`
-     - Xem ai gọi hàm hoặc hàm gọi những gì: dùng `trace_path(...)`
-     - Xem nội dung hàm/class cụ thể: dùng `get_code_snippet(qualified_name="...")`
-     - Xem cấu trúc/kiến trúc: dùng `get_architecture(...)`
-     - Đánh giá tác động khi sửa code: dùng `detect_changes(...)`
-3. **Fallback:** Chỉ được dùng `Read` (với `offset`, `limit`) hoặc `Grep` khi MCP trả về không tìm thấy kết quả hoặc file chưa được index đầy đủ.
+Project graph: `C-Users-ASUS-Desktop-workspace-project-novel-crawler`
+Namespace: `user-codebase-memory-mcp`
+
+## Project skills
+
+- Before exploring or modifying Crawl, read:
+  `.cursor/skills/crawler-workflow`
+- Before exploring or modifying TTS, read:
+  `.cursor/skills/tts-workflow`
+- If a change makes a skill fact false, patch only the stale bullet/map row and append one changelog line.
+- Do not rewrite the skill when its contract remains valid.
+
+## Choose the smallest source
+
+Use the smallest tool/query that can answer the current question.
+
+- Symbol, class, route, caller/callee:
+  `search_graph` with a small `limit`, then `trace_path` or `get_code_snippet` using the returned `qualified_name`.
+- Literal string, UI text, log, config key:
+  `search_code` with `mode="compact"`.
+- Known file path:
+  `Read` only the required range using `offset` / `limit`.
+  Do not read an entire file when targeted reading is sufficient.
+- Architecture overview:
+  `get_architecture` with `aspect="overview"` only when needed.
+- Impact / blast radius:
+  `detect_changes` before non-trivial changes when impact analysis is needed.
+- Multi-step graph queries:
+  use `query_graph` only when simpler graph tools are insufficient.
+
+## Index verification
+
+- Use `check_index_coverage` when a negative result or impact analysis depends on indexed paths.
+- If coverage reports `parse_partial` or `skipped`, inspect the affected source directly.
+- `list_projects` or `index_status` only once when session/project state needs verification.
+  Do not repeatedly call them.
+
+## Fallback
+
+- Codebase Memory MCP is the primary discovery method.
+- Use `Read` when the exact source context is required or the relevant file/path is already known.
+- Use `Grep` only when MCP cannot provide the required information, indexing is incomplete, or an exact raw-text search is required.
+- Never Grep the entire repository to discover a symbol/function that Codebase Memory can resolve.
+
+## Efficiency
+
+- Prefer the minimum number of tool calls needed to establish the relevant context.
+- Do not repeat MCP queries when the required information is already known.
+- Once the relevant symbol/flow/context is established, stop discovery and proceed with the task.
