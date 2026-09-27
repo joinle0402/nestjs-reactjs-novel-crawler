@@ -23,6 +23,7 @@ from db import (
     get_novel_by_id,
     reset_processing_tts_chapters,
 )
+from log_utils import log_message
 from tts import generate_mp3_for_novel
 from tts_jobs import claim_job, fetch_job, mark_if_running, set_chapter_numbers
 
@@ -137,18 +138,17 @@ def run_job(job_id: int) -> None:
         set_chapter_numbers(job_id, numbers)
         if not numbers:
             mark_if_running(job_id, "completed", None)
-            print(f"[TTS job {job_id}] không có chương cần tạo", flush=True)
+            log_message(f"[TTS job {job_id}] không có chương cần tạo")
             return
         use_bgm = bool(job["bgm_enabled"])
         block = bgm_block_reason(use_bgm)
         if block:
-            print(f"[TTS job {job_id}] {block} — tiếp tục không nhạc nền.", flush=True)
+            log_message(f"[TTS job {job_id}] {block} — tiếp tục không nhạc nền.")
             use_bgm = False
-        print(
+        log_message(
             f"[TTS job {job_id}] {novel.title} scope={job['scope']} "
             f"engine={job['engine']} voice={job['voice']} rate={job['rate']} bgm={use_bgm} "
             f"chapters={len(numbers)}",
-            flush=True,
         )
         generate_mp3_for_novel(
             novel.id,
@@ -164,7 +164,7 @@ def run_job(job_id: int) -> None:
             reset_processing_tts_chapters(novel_id)
             return
         mark_if_running(job_id, "completed", None)
-        print(f"[TTS job {job_id}] completed", flush=True)
+        log_message(f"[TTS job {job_id}] completed")
     finally:
         stop_event.set()
         _clear_pid()
@@ -182,7 +182,7 @@ def main() -> None:
         if job:
             reset_processing_tts_chapters(int(job["novel_id"]))
             mark_if_running(job_id, "stopped", None)
-        print(f"[TTS job {job_id}] stopped", flush=True)
+        log_message(f"[TTS job {job_id}] stopped")
     except Exception as exc:
         traceback.print_exc()
         job = fetch_job(job_id)

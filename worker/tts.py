@@ -7,12 +7,14 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Callable
 
 import edge_tts
 
 from tts_vieneu_client import close_vieneu, synthesize_vieneu
+from log_utils import format_duration, format_elapsed, log_message
 from config import (
     BGM_EXPORT_BITRATE,
     BGM_FADE_IN_MS,
@@ -29,6 +31,12 @@ from config import (
     TTS_RATE,
     TTS_REQUEST_DELAY_SEC,
     TTS_VOICE,
+    VIENEU_CHUNK_MAX_CHARS,
+    VIENEU_CHUNK_MAX_SENTENCES,
+    VIENEU_CHUNK_PAUSE_MS,
+    VIENEU_CHUNK_SHORT_CHARS,
+    VIENEU_CHUNK_SHORT_MAX_CHARS,
+    VIENEU_CHUNK_SHORT_MAX_SENTENCES,
     SELECTORS,
 )
 from db import (
@@ -172,6 +180,222 @@ def _split_text_into_chunks(text: str, max_size: int = TTS_CHUNK_SIZE) -> list[s
     return chunks
 
 
+_VIENEU_CLOSERS = set("\"“”‘’'»)\]】』」")
+_VIENEU_ABBREV_DOT = re.compile(
+    r"(?:^|[\s(])(?:v\.v\.?|TS|PGS|GS|ThS|Mr|Mrs|Ms|Dr|St|No|tp)\.$",
+    re.IGNORECASE,
+)
+
+
+def _prepare_vieneu_speech(text: str) -> str:
+    """Chỉnh dấu ngắt để VieNeu nghỉ đúng chỗ. Không đổi từ của truyện."""
+    if not text:
+        return ""
+    text = re.sub(r"\.{3,}|…+", "…", text)
+    text = re.sub(r"(?<=\w)[^\S\n]*(?:—|–|--)[^\S\n]*(?=\w)", "… ", text)
+    text = re.sub(r"(?m)^[^\S\n]*(?:—|–|--)[^\S\n]+", "", text)
+
+    def _insert_speech_space(match: re.Match) -> str:
+        punct, closers, nxt = match.group(1), match.group(2), match.group(3)
+        # Dấu chấm trong v.v. / viết tắt viết thường không phải hết câu.
+        if punct == "." and not nxt.isupper():
+            return match.group(0)
+        return punct + closers + " " + nxt
+
+    text = re.sub(
+        r"([.!?…])([\"“”‘’'»)\]】]*)([^\W\d_])",
+        _insert_speech_space,
+        text,
+    )
+    text = re.sub(r"[^\S\n]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _consume_vieneu_closers(text: str, index: int) -> int:
+    while index < len(text) and text[index] in _VIENEU_CLOSERS:
+        index += 1
+    return index
+
+
+def _is_decimal_dot(text: str, index: int) -> bool:
+    return (
+        text[index] == "."
+        and index > 0
+        and text[index - 1].isdigit()
+        and index + 1 < len(text)
+        and text[index + 1].isdigit()
+    )
+
+
+def _is_abbrev_dot(text: str, index: int) -> bool:
+    if text[index] != ".":
+        return False
+    if index > 0 and text[index - 1] in "vV":
+        tail = text[index - 1 : index + 4]
+        if re.match(r"v\.v\.?", tail, re.IGNORECASE):
+            return True
+    window = text[max(0, index - 16) : index + 1]
+    return _VIENEU_ABBREV_DOT.search(window) is not None
+
+
+def _split_vieneu_sentences(text: str) -> list[str]:
+    text = text.strip()
+    if not text:
+        return []
+    sentences: list[str] = []
+    start = 0
+    index = 0
+    length = len(text)
+    while index < length:
+        if text[index] == "…" or text.startswith("...", index):
+            end = index + (3 if text.startswith("...", index) else 1)
+            while end < length and text[end] in ".…":
+                end += 1
+            end = _consume_vieneu_closers(text, end)
+            if end >= length or text[end].isspace():
+                piece = text[start:end].strip()
+                if piece:
+                    sentences.append(piece)
+                index = end
+                while index < length and text[index].isspace():
+                    index += 1
+                start = index
+                continue
+        if text[index] in ".!?":
+            if _is_decimal_dot(text, index) or _is_abbrev_dot(text, index):
+                index += 1
+                continue
+            end = index + 1
+            while end < length and text[end] in ".!?":
+                end += 1
+            end = _consume_vieneu_closers(text, end)
+            if end >= length or text[end].isspace():
+                piece = text[start:end].strip()
+                if piece:
+                    sentences.append(piece)
+                index = end
+                while index < length and text[index].isspace():
+                    index += 1
+                start = index
+                continue
+        index += 1
+    tail = text[start:].strip()
+    if tail:
+        sentences.append(tail)
+    return sentences
+
+
+def _split_overflow_sentence(sentence: str) -> list[str]:
+    """Câu dài hơn ngân sách thì cắt ở dấu phẩy, không cắt giữa từ."""
+    sentence = sentence.strip()
+    if len(sentence) <= VIENEU_CHUNK_MAX_CHARS:
+        return [sentence] if sentence else []
+    parts: list[str] = []
+    remaining = sentence
+    while len(remaining) > VIENEU_CHUNK_MAX_CHARS:
+        window = remaining[:VIENEU_CHUNK_MAX_CHARS]
+        split_at = -1
+        for sep in (", ", "; ", " "):
+            pos = window.rfind(sep, VIENEU_CHUNK_MAX_CHARS // 2)
+            if pos > 0:
+                split_at = pos + len(sep)
+                break
+        if split_at <= 0:
+            split_at = window.rfind(" ")
+            split_at = split_at + 1 if split_at > 0 else VIENEU_CHUNK_MAX_CHARS
+        piece = remaining[:split_at].strip()
+        if piece:
+            parts.append(piece)
+        remaining = remaining[split_at:].strip()
+    if remaining:
+        parts.append(remaining)
+    return parts
+
+
+def _pack_vieneu_sentences(sentences: list[str]) -> list[str]:
+    chunks: list[str] = []
+    buf: list[str] = []
+
+    def flush() -> None:
+        if buf:
+            chunks.append(" ".join(buf))
+            buf.clear()
+
+    for sentence in sentences:
+        for piece in _split_overflow_sentence(sentence):
+            if not buf:
+                buf.append(piece)
+                continue
+            short = len(piece) <= VIENEU_CHUNK_SHORT_CHARS and all(
+                len(item) <= VIENEU_CHUNK_SHORT_CHARS for item in buf
+            )
+            max_sentences = (
+                VIENEU_CHUNK_SHORT_MAX_SENTENCES if short else VIENEU_CHUNK_MAX_SENTENCES
+            )
+            max_chars = VIENEU_CHUNK_SHORT_MAX_CHARS if short else VIENEU_CHUNK_MAX_CHARS
+            joined_len = len(" ".join(buf)) + 1 + len(piece)
+            if len(buf) >= max_sentences or joined_len > max_chars:
+                flush()
+            buf.append(piece)
+    flush()
+    return chunks
+
+
+def _split_vieneu_chunks(text: str) -> list[str]:
+    """Gói 1–3 câu (thoại ngắn tối đa 6) để mỗi infer còn nhịp đọc."""
+    chunks: list[str] = []
+    for paragraph in re.split(r"\n\s*\n", text):
+        sentences: list[str] = []
+        for line in paragraph.splitlines():
+            line = line.strip()
+            if line:
+                sentences.extend(_split_vieneu_sentences(line))
+        chunks.extend(_pack_vieneu_sentences(sentences))
+    return [chunk for chunk in chunks if chunk.strip()]
+
+
+async def _write_vieneu_chunks(
+    chunks: list[str],
+    output_path: Path,
+    chunk_sem: asyncio.Semaphore,
+    *,
+    voice: str,
+    rate: str,
+    on_chunk_done: Callable[[int], None] | None = None,
+) -> None:
+    if not chunks:
+        raise ValueError("Không có đoạn nào để đọc")
+    if len(chunks) == 1:
+        await _text_to_mp3_with_retry(
+            chunks[0], output_path, engine="vieneu", voice=voice, rate=rate
+        )
+        if on_chunk_done:
+            on_chunk_done(len(chunks[0]))
+        return
+
+    with tempfile.TemporaryDirectory(prefix="tts_chunk_") as tmp_dir:
+        tmp = Path(tmp_dir)
+        chunk_paths: list[Path] = []
+        tasks = []
+        for i, chunk_text in enumerate(chunks):
+            chunk_path = tmp / f"chunk_{i:03d}.mp3"
+            chunk_paths.append(chunk_path)
+            tasks.append(
+                _tts_single_chunk(
+                    chunk_text,
+                    chunk_path,
+                    chunk_sem,
+                    engine="vieneu",
+                    voice=voice,
+                    rate=rate,
+                    on_chunk_done=on_chunk_done,
+                )
+            )
+        await asyncio.gather(*tasks)
+        _merge_mp3_files(chunk_paths, output_path, gap_ms=VIENEU_CHUNK_PAUSE_MS)
+
+
 async def _text_to_mp3(
     text: str,
     output_path: Path,
@@ -207,7 +431,7 @@ async def _text_to_mp3_with_retry(
             last_exc = exc
             if attempt < TTS_MAX_RETRIES - 1:
                 wait = 2 ** (attempt + 1)
-                print(
+                log_message(
                     f"    TTS lỗi (lần {attempt + 1}): {type(exc).__name__} — "
                     f"thử lại sau {wait}s..."
                 )
@@ -246,7 +470,7 @@ def _bgm_enabled() -> bool:
     if path.is_file():
         return True
     if not _bgm_missing_warned:
-        print(f"Lưu ý: BGM_PATH không tồn tại ({BGM_PATH}) — bỏ qua nhạc nền.")
+        log_message(f"Lưu ý: BGM_PATH không tồn tại ({BGM_PATH}) — bỏ qua nhạc nền.")
         _bgm_missing_warned = True
     return False
 
@@ -294,19 +518,17 @@ def _mix_background_music_or_skip(voice_path: Path, *, quiet: bool = False) -> N
     """Trộn nhạc nền nếu ffmpeg chạy được. Lỗi nhạc nền không được hủy file giọng."""
     if not _ffmpeg_on_path():
         if not quiet:
-            print(
+            log_message(
                 "Lưu ý: không có ffmpeg — bỏ nhạc nền, giữ file giọng đọc. "
                 "Cài ffmpeg (winget install Gyan.FFmpeg) rồi chạy lại nếu cần nhạc nền.",
-                flush=True,
             )
         return
     try:
         _mix_background_music(voice_path)
     except Exception as exc:
         if not quiet:
-            print(
+            log_message(
                 f"Lưu ý: không trộn được nhạc nền ({exc}) — giữ file giọng đọc.",
-                flush=True,
             )
 
 
@@ -324,24 +546,58 @@ def _mix_background_music(voice_path: Path) -> None:
     )
 
 
-def _merge_mp3_files(chunk_paths: list[Path], output_path: Path) -> None:
+def _merge_mp3_files(
+    chunk_paths: list[Path],
+    output_path: Path,
+    gap_ms: int = 0,
+) -> None:
     """Ghép các chunk MP3 — ưu tiên pydub+ffmpeg, fallback nối byte."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if _ffmpeg_on_path():
         try:
             from pydub import AudioSegment
 
+            gap = AudioSegment.silent(duration=gap_ms) if gap_ms > 0 else None
             combined = AudioSegment.empty()
             for path in chunk_paths:
+                if len(combined) > 0 and gap is not None:
+                    combined += gap
                 combined += AudioSegment.from_mp3(str(path))
             combined.export(str(output_path), format="mp3")
             return
         except Exception as exc:
-            print(f"Ghép MP3 bằng ffmpeg lỗi ({exc}) — nối byte.", flush=True)
+            log_message(f"Ghép MP3 bằng ffmpeg lỗi ({exc}) — nối byte.")
 
     with open(output_path, "wb") as out:
         for path in chunk_paths:
             out.write(path.read_bytes())
+
+
+class _TtsProgressTimer:
+    def __init__(self, chapter_number: int, title: str) -> None:
+        self.chapter_number = chapter_number
+        self.title = title
+        self.started_at = time.perf_counter()
+        self.last_logged_at = self.started_at
+        self.last_done = 0
+
+    def report(self, done: int, total: int, *, quiet: bool = False) -> None:
+        now = time.perf_counter()
+        delta = max(0, done - self.last_done)
+        execute_seconds = max(0.0, now - self.last_logged_at)
+        total_seconds = max(0.0, now - self.started_at)
+        self.last_done = done
+        self.last_logged_at = now
+        _log_tts_progress(
+            self.chapter_number,
+            self.title,
+            done,
+            total,
+            delta=delta,
+            execute_seconds=execute_seconds,
+            total_seconds=total_seconds,
+            quiet=quiet,
+        )
 
 
 def _log_tts_progress(
@@ -350,15 +606,30 @@ def _log_tts_progress(
     done: int,
     total: int,
     *,
+    delta: int | None = None,
+    execute_seconds: float | None = None,
+    total_seconds: float | None = None,
     quiet: bool = False,
 ) -> None:
     if quiet:
         return
     pct = _progress_pct(done, total)
-    print(
-        f"[TTS] Ch.{chapter_number:04d} {title[:40]} — "
-        f"{done:,}/{total:,} ký tự ({pct}%)",
-        flush=True,
+    total_text = f"{total:,}"
+    number_width = len(total_text)
+    done_text = f"{done:,}".rjust(number_width)
+    timing = ""
+    if delta is not None and execute_seconds is not None and total_seconds is not None:
+        delta_text = f"{delta:,}".rjust(number_width)
+        timing = (
+            f" | xử lý thêm: {delta_text} ký tự"
+            f" | thời gian đoạn: {format_elapsed(execute_seconds):>9}"
+            f" | tổng thời gian: {format_elapsed(total_seconds):>9}"
+            f" ({format_duration(total_seconds)})"
+        )
+    title_text = title[:40].ljust(40)
+    log_message(
+        f"[TTS] Ch.{chapter_number:04d} {title_text} — "
+        f"{done_text}/{total_text} ký tự ({pct:>3}%){timing}",
     )
 
 
@@ -393,24 +664,48 @@ async def _tts_chapter_content(
     content = _normalize_tts_text(content)
     if not content:
         raise ValueError("Nội dung chương rỗng sau khi chuẩn hóa")
+    if engine == "vieneu":
+        content = _prepare_vieneu_speech(content)
+        if not content:
+            raise ValueError("Nội dung chương rỗng sau khi chuẩn hóa")
+        chunks = _split_vieneu_chunks(content)
+        if not chunks:
+            raise ValueError("Nội dung chương rỗng sau khi chia câu")
+        chars_total = sum(len(chunk) for chunk in chunks)
+        start_tts_chapter(ch.id, chars_total)
+        progress_timer = _TtsProgressTimer(ch.chapter_number, ch.title)
+
+        def _on_vieneu_chunk_done(delta: int) -> None:
+            done, total = increment_tts_chars_done(ch.id, delta)
+            progress_timer.report(done, total, quiet=quiet)
+
+        await _write_vieneu_chunks(
+            chunks,
+            output_path,
+            chunk_sem,
+            voice=voice,
+            rate=rate,
+            on_chunk_done=_on_vieneu_chunk_done,
+        )
+        return
+
     chars_total = len(content)
     start_tts_chapter(ch.id, chars_total)
+    progress_timer = _TtsProgressTimer(ch.chapter_number, ch.title)
 
     def _on_chunk_done(delta: int) -> None:
         done, total = increment_tts_chars_done(ch.id, delta)
-        _log_tts_progress(ch.chapter_number, ch.title, done, total, quiet=quiet)
+        progress_timer.report(done, total, quiet=quiet)
 
     if not ENABLE_TTS_CHUNK or chars_total <= TTS_CHUNK_SIZE:
         await _text_to_mp3_with_retry(content, output_path, engine=engine, voice=voice, rate=rate)
-        increment_tts_chars_done(ch.id, chars_total)
-        _log_tts_progress(ch.chapter_number, ch.title, chars_total, chars_total, quiet=quiet)
+        _on_chunk_done(chars_total)
         return
 
     chunks = _split_text_into_chunks(content)
     if len(chunks) == 1:
         await _text_to_mp3_with_retry(content, output_path, engine=engine, voice=voice, rate=rate)
-        increment_tts_chars_done(ch.id, chars_total)
-        _log_tts_progress(ch.chapter_number, ch.title, chars_total, chars_total, quiet=quiet)
+        _on_chunk_done(chars_total)
         return
 
     with tempfile.TemporaryDirectory(prefix="tts_chunk_") as tmp_dir:
@@ -453,7 +748,7 @@ async def _tts_chapter(
     async with chapter_sem:
         if not quiet:
             pct = _progress_pct(idx, total)
-            print(f"  [{idx}/{total}] ({pct}%) TTS: {ch.title}", flush=True)
+            log_message(f"  [{idx}/{total}] ({pct}%) TTS: {ch.title}")
         try:
             await _tts_chapter_content(
                 ch,
@@ -474,7 +769,7 @@ async def _tts_chapter(
         except Exception as exc:
             update_tts_status(ch.id, STATUS_FAILED)
             if not quiet:
-                print(f"[TTS Lỗi] Ch.{ch.chapter_number} ({ch.title}): {exc}", flush=True)
+                log_message(f"[TTS Lỗi] Ch.{ch.chapter_number} ({ch.title}): {exc}")
             raise
 
 
@@ -518,7 +813,7 @@ async def _generate_all_mp3(
     for ch, result in zip(chapters, results):
         if isinstance(result, Exception):
             if not quiet:
-                print(f"  Lỗi TTS: {ch.title} — {result}")
+                log_message(f"  Lỗi TTS: {ch.title} — {result}")
             failed.append(ch)
         else:
             success.append(result)
@@ -538,6 +833,17 @@ def synthesize_clip(
     normalized = _normalize_tts_text(text)
     if not normalized:
         raise ValueError("Văn bản thử giọng rỗng sau khi chuẩn hóa")
+    if engine == "vieneu":
+        asyncio.run(
+            _write_vieneu_chunks(
+                _split_vieneu_chunks(_prepare_vieneu_speech(normalized)),
+                output_path,
+                asyncio.Semaphore(TTS_CHUNK_CONCURRENCY),
+                voice=voice,
+                rate=rate,
+            )
+        )
+        return
     asyncio.run(_text_to_mp3(normalized, output_path, engine=engine, voice=voice, rate=rate))
 
 
@@ -548,15 +854,29 @@ def chapter_to_mp3(text: str, output_path: Path) -> None:
     text = _normalize_tts_text(text)
     if not text:
         raise ValueError("Nội dung chương rỗng sau khi chuẩn hóa")
-    asyncio.run(
-        _text_to_mp3_with_retry(
-            text,
-            output_path,
-            engine=str(settings["engine"]),
-            voice=str(settings["voice"]),
-            rate=str(settings["rate"]),
+    engine = str(settings["engine"])
+    voice = str(settings["voice"])
+    rate = str(settings["rate"])
+    if engine == "vieneu":
+        asyncio.run(
+            _write_vieneu_chunks(
+                _split_vieneu_chunks(_prepare_vieneu_speech(text)),
+                output_path,
+                asyncio.Semaphore(TTS_CHUNK_CONCURRENCY),
+                voice=voice,
+                rate=rate,
+            )
         )
-    )
+    else:
+        asyncio.run(
+            _text_to_mp3_with_retry(
+                text,
+                output_path,
+                engine=engine,
+                voice=voice,
+                rate=rate,
+            )
+        )
     if settings["bgmEnabled"] and _bgm_enabled():
         _mix_background_music_or_skip(output_path)
 
@@ -604,35 +924,35 @@ def generate_mp3_for_novel(
 
     already_have = len(all_chapters) - len(need_mp3)
     if already_have > 0 and not quiet:
-        print(f"Bỏ qua {already_have} chương đã có MP3 hợp lệ.")
+        log_message(f"Bỏ qua {already_have} chương đã có MP3 hợp lệ.")
 
     if not chapters:
         if not quiet:
-            print("Không có chương nào cần tạo MP3.")
+            log_message("Không có chương nào cần tạo MP3.")
         return []
 
     if ENABLE_TTS_CHUNK and not _ffmpeg_on_path() and not quiet:
-        print(
+        log_message(
             "Lưu ý: chưa cài ffmpeg — ghép chunk MP3 bằng nối byte "
             "(vẫn nghe được, chất lượng tương đương)."
         )
     mix_bgm = bool(use_bgm) and _bgm_enabled() and _ffmpeg_on_path()
     if use_bgm and _bgm_enabled() and not mix_bgm and not quiet:
-        print(
+        log_message(
             "Lưu ý: không có ffmpeg — bỏ nhạc nền, vẫn tạo MP3 giọng đọc. "
             "Cài ffmpeg: winget install Gyan.FFmpeg"
         )
     if mix_bgm and not quiet:
-        print(f"Nhạc nền: {BGM_PATH} ({BGM_VOLUME_DB} dB, loop={BGM_LOOP})")
+        log_message(f"Nhạc nền: {BGM_PATH} ({BGM_VOLUME_DB} dB, loop={BGM_LOOP})")
 
     chunk_info = ""
     if ENABLE_TTS_CHUNK:
         chunk_info = f", chunk concurrency={TTS_CHUNK_CONCURRENCY}"
     if not quiet:
         if engine == "vieneu":
-            print(f"Tạo MP3 cho {len(chapters)} chương (VieNeu, voice={voice}{chunk_info})...")
+            log_message(f"Tạo MP3 cho {len(chapters)} chương (VieNeu, voice={voice}{chunk_info})...")
         else:
-            print(
+            log_message(
                 f"Tạo MP3 cho {len(chapters)} chương "
                 f"(song song, tối đa {TTS_CONCURRENCY}{chunk_info}, voice={voice}, rate={rate})..."
             )
@@ -654,20 +974,17 @@ def generate_mp3_for_novel(
         close_vieneu()
         reset_processing_tts_chapters(novel_id)
         if not quiet:
-            print(
-                "\n[TTS] Đã dừng. Chạy lại để resume các chương chưa hoàn thành.",
-                flush=True,
-            )
+            log_message("[TTS] Đã dừng. Chạy lại để resume các chương chưa hoàn thành.")
         return []
 
     if not quiet:
-        print(
-            f"\nTổng kết TTS: {len(success)} thành công, "
+        log_message(
+            f"Tổng kết TTS: {len(success)} thành công, "
             f"{len(empty_skipped)} bỏ qua (rỗng), {len(failed)} lỗi"
         )
         if failed:
-            print("Chương lỗi:")
+            log_message("Chương lỗi:")
             for ch in failed:
-                print(f"  - [{ch.chapter_number}] {ch.title}")
+                log_message(f"  - [{ch.chapter_number}] {ch.title}")
 
     return success

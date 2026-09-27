@@ -149,6 +149,14 @@ ENABLE_TTS_CHUNK = True
 TTS_CHUNK_SIZE = 3000  # ký tự mỗi chunk; khoảng 2500–4000 ít phiên hơn mà vẫn ổn định
 TTS_CHUNK_CONCURRENCY = 1  # số chunk TTS song song trong 1 chương
 
+# VieNeu: gói theo câu. Edge-TTS không dùng các hằng này.
+VIENEU_CHUNK_MAX_CHARS = 700
+VIENEU_CHUNK_MAX_SENTENCES = 3
+VIENEU_CHUNK_SHORT_CHARS = 80
+VIENEU_CHUNK_SHORT_MAX_SENTENCES = 6
+VIENEU_CHUNK_SHORT_MAX_CHARS = 420
+VIENEU_CHUNK_PAUSE_MS = 250
+
 # Lưu session Playwright sau captcha (tái sử dụng lần sau)
 BROWSER_STATE_PATH = str(WORKER_DIR / "browser_state.json")
 

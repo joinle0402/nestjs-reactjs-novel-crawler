@@ -1,10 +1,17 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { execFileSync, spawn, type ChildProcess } from 'child_process';
-import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 import { resolveWorkerDir } from './tts-settings.service';
 
 type PythonLaunch = { command: string; prefix: string[] };
+
+function workerLogLine(message: string): string {
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const timestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    return `[${timestamp}] ${message}\n`;
+}
 
 function pythonCanImportDb(command: string, prefix: string[]): boolean {
     try {
@@ -80,7 +87,7 @@ export class TtsWorkerService implements OnModuleInit, OnModuleDestroy {
         const logDir = path.join(workerDir, 'logs');
         mkdirSync(logDir, { recursive: true });
         const logPath = path.join(logDir, 'tts_worker.log');
-        appendFileSync(logPath, `\n--- spawn ${python.command} ${args.join(' ')} ---\n`);
+        writeFileSync(logPath, workerLogLine(`--- spawn ${python.command} ${args.join(' ')} ---`), 'utf8');
         const logFd = openSync(logPath, 'a');
         const startedAt = Date.now();
 
@@ -91,11 +98,11 @@ export class TtsWorkerService implements OnModuleInit, OnModuleDestroy {
         });
         this.logger.log(`TTS worker pid=${this.child.pid ?? '?'} (${python.command})`);
         this.child.on('error', (error: NodeJS.ErrnoException) => {
-            appendFileSync(logPath, `spawn error: ${error.message}\n`);
+            appendFileSync(logPath, workerLogLine(`spawn error: ${error.message}`));
             this.logger.error(`Không chạy được TTS worker: ${error.message}`);
         });
         this.child.on('exit', (code, exitSignal) => {
-            appendFileSync(logPath, `exit code=${code} signal=${exitSignal ?? ''}\n`);
+            appendFileSync(logPath, workerLogLine(`exit code=${code} signal=${exitSignal ?? ''}`));
             if (this.stopping || code === 0) {
                 return;
             }

@@ -7,7 +7,10 @@ import json
 import os
 import subprocess
 import threading
+import time
 from pathlib import Path
+
+from log_utils import format_duration, format_elapsed, log_message
 
 WORKER_DIR = Path(__file__).resolve().parent
 _READY_TIMEOUT_SEC = 1800.0
@@ -67,7 +70,27 @@ class _VieNeuClient:
     def __init__(self) -> None:
         self._proc: subprocess.Popen | None = None
         self._lock = threading.Lock()
+        self._log_lock = threading.Lock()
         self._stderr_thread: threading.Thread | None = None
+        self._log_started_at: float | None = None
+        self._log_last_at: float | None = None
+
+    def _log_vieneu(self, message: str) -> None:
+        now = time.perf_counter()
+        with self._log_lock:
+            if self._log_started_at is None:
+                self._log_started_at = now
+                self._log_last_at = now
+            last = self._log_last_at or now
+            segment_seconds = max(0.0, now - last)
+            total_seconds = max(0.0, now - (self._log_started_at or now))
+            self._log_last_at = now
+        log_message(
+            f"[VieNeu] {message}"
+            f" | thời gian đoạn: {format_elapsed(segment_seconds):>9}"
+            f" | tổng thời gian: {format_elapsed(total_seconds):>9}"
+            f" ({format_duration(total_seconds)})"
+        )
 
     def synthesize(self, text: str, output_path: Path, voice: str) -> None:
         with self._lock:
@@ -99,6 +122,9 @@ class _VieNeuClient:
         if self._proc is not None and self._proc.poll() is None:
             return
         self._stop()
+        with self._log_lock:
+            self._log_started_at = None
+            self._log_last_at = None
         python = vieneu_python()
         script = WORKER_DIR / "tts_vieneu.py"
 
@@ -120,9 +146,9 @@ class _VieNeuClient:
             env["HF_HUB_OFFLINE"] = "1"
 
         if env.get("HF_HUB_OFFLINE") == "1":
-            print("[VieNeu] Đang khởi tạo model (local cache)...", flush=True)
+            self._log_vieneu("Đang khởi tạo model (local cache)...")
         else:
-            print("[VieNeu] đang tải model (lần đầu có thể mất vài phút)...", flush=True)
+            self._log_vieneu("đang tải model (lần đầu có thể mất vài phút)...")
 
         self._proc = subprocess.Popen(
             [str(python), "-u", str(script)],
@@ -148,7 +174,7 @@ class _VieNeuClient:
             error = str(ready.get("error") or "không tải được model")
             self._stop()
             raise RuntimeError(f"VieNeu: {error}")
-        print("[VieNeu] model sẵn sàng.", flush=True)
+        self._log_vieneu("model sẵn sàng.")
 
     def _drain_stderr(self, proc: subprocess.Popen) -> None:
         stream = proc.stderr
@@ -158,7 +184,7 @@ class _VieNeuClient:
             for line in stream:
                 text = line.rstrip()
                 if text:
-                    print(f"[VieNeu] {text}", flush=True)
+                    self._log_vieneu(text)
         except Exception:
             return
 

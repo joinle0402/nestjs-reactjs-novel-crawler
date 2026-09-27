@@ -18,6 +18,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 from tts import synthesize_clip
 from tts_vieneu_client import close_vieneu
+from log_utils import log_message
 
 # Đổi câu thì sửa cả TTS_SAVED_SAMPLE_TEXT trong tts-sample.service.ts.
 CANONICAL_TEXT = "Xin chào. Đây là đoạn thử giọng đọc. Nếu bạn nghe rõ câu này, giọng đã chọn đang hoạt động."
@@ -50,10 +51,10 @@ def _ready(path: Path) -> bool:
 def _write_one(engine: str, voice: str, rate: str) -> None:
     path = CACHE_DIR / cache_filename(engine, voice, rate)
     if _ready(path):
-        print(f"có sẵn {path.name}", flush=True)
+        log_message(f"có sẵn {path.name}")
         return
     tmp = path.with_name(f"{path.stem}.part.mp3")
-    print(f"đang lưu {path.name}", flush=True)
+    log_message(f"đang lưu {path.name}")
     try:
         synthesize_clip(CANONICAL_TEXT, tmp, engine=engine, voice=voice, rate=rate)
         if not _ready(tmp):
@@ -62,7 +63,7 @@ def _write_one(engine: str, voice: str, rate: str) -> None:
     except Exception:
         tmp.unlink(missing_ok=True)
         raise
-    print(f"đã lưu {path.name}", flush=True)
+    log_message(f"đã lưu {path.name}")
 
 
 def fill_cache(engine: str | None = None) -> None:
@@ -106,5 +107,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print(str(exc), file=sys.stderr)
+        log_message(str(exc), file=sys.stderr)
         raise SystemExit(1) from exc

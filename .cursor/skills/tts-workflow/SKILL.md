@@ -31,6 +31,7 @@ Crawl may call TTS when `run_tts=True`. Crawl job rules live in the `crawler-wor
 - One active TTS worker at a time. Respect `tts_worker.lock`.
 - Skip chapters that already have a valid MP3, and chapters with no content.
 - `_normalize_tts_text` only strips tags, URLs, control characters, emoji, and known junk. Do not rewrite, summarize, or paraphrase the story.
+- VieNeu packs about 3 sentences per `infer` (`VIENEU_CHUNK_MAX_CHARS`, short lines up to 6) and inserts `VIENEU_CHUNK_PAUSE_MS` between chunks. `_prepare_vieneu_speech` only adjusts pauses and punctuation. Edge-TTS still uses `_split_text_into_chunks` and `TTS_CHUNK_SIZE`.
 - Chunking and background music need ffmpeg. Without ffmpeg, still write the voice MP3.
 - `use_bgm` passed into a job is a snapshot. Do not re-read `tts_settings.json` mid-job for that flag.
 - Stopping or interrupting resets processing chapters so a later run can resume (`reset_processing_tts_chapters`).
@@ -46,7 +47,7 @@ API surface on `TtsController`: `getSettings`, `updateSettings`, `savedSample`, 
 | Sample playback | `TtsSampleService`, `worker/tts_sample.py` |
 | Launch or stop the worker | `TtsWorkerService`, `worker/tts_worker.py` |
 | Which chapters get audio | `generate_mp3_for_novel` |
-| Per-chapter synthesis and chunks | `_tts_chapter`, `_tts_chapter_content`, `_split_text_into_chunks` |
+| Per-chapter synthesis and chunks | `_tts_chapter`, `_tts_chapter_content`; edge-tts `_split_text_into_chunks`; VieNeu `_split_vieneu_chunks` |
 | VieNeu process | `worker/tts_vieneu.py` |
 | Chapter range parsing | `backend/src/tts/chapter-range.ts` and `worker/chapter_range.py` |
 
@@ -69,3 +70,4 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 ## Changelog
 
 - 2026-09-27 — Initial map: scopes, engines, worker chain, normalize and resume invariants.
+- 2026-09-27 — VieNeu sentence packing and pause gaps; edge-tts chunk size unchanged.

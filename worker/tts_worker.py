@@ -19,6 +19,7 @@ if str(WORKER_DIR) not in sys.path:
     sys.path.insert(0, str(WORKER_DIR))
 
 from db import reset_processing_tts_chapters
+from log_utils import log_message
 from tts_jobs import fetch_active_job, fetch_job, mark_if_running
 
 LOCK_PATH = WORKER_DIR / "tts_worker.lock"
@@ -197,10 +198,10 @@ def tick() -> None:
     novel_id = int(job["novel_id"])
     pid = read_runner_pid()
     if pid and pid_alive(pid):
-        print(f"[TTS worker] gắn vào runner pid={pid} job={job_id}", flush=True)
+        log_message(f"[TTS worker] gắn vào runner pid={pid} job={job_id}")
         monitor_pid(pid, job_id, novel_id)
         return
-    print(f"[TTS worker] chạy job={job_id} novel={novel_id} status={job['status']}", flush=True)
+    log_message(f"[TTS worker] chạy job={job_id} novel={novel_id} status={job['status']}")
     proc = spawn_runner(job_id)
     monitor_proc(proc, job_id, novel_id)
 
@@ -208,14 +209,14 @@ def tick() -> None:
 def main() -> None:
     _configure_stdio()
     if not acquire_lock():
-        print("[TTS worker] process khác đang chạy, thoát.", flush=True)
+        log_message("[TTS worker] process khác đang chạy, thoát.")
         return
-    print("[TTS worker] đang chờ job.", flush=True)
+    log_message("[TTS worker] đang chờ job.")
     while True:
         try:
             tick()
         except KeyboardInterrupt:
-            print("\n[TTS worker] dừng.", flush=True)
+            log_message("[TTS worker] dừng.")
             return
         except Exception:
             traceback.print_exc()
