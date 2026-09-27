@@ -38,6 +38,8 @@ import { isActiveTtsJob } from '@/features/tts/api/ttsApi.ts';
 import { TtsRunModal, type TtsRunRequest } from '@/features/tts/components/TtsRunModal.tsx';
 import { useCurrentTtsJobQuery, useTtsPreviewQuery } from '@/features/tts/hooks/useTtsQueries.ts';
 import { formatChapterRangeInput } from '@/features/tts/lib/chapterRange.ts';
+import { isActiveCrawlJob } from '@/features/crawl/api/crawlApi.ts';
+import { useCreateCrawlJobMutation, useCurrentCrawlJobQuery } from '@/features/crawl/hooks/useCrawlQueries.ts';
 
 const PAGE_SIZE = 12;
 
@@ -70,6 +72,9 @@ export function NovelDetailPage() {
     const [runRequest, setRunRequest] = useState<TtsRunRequest | null>(null);
 
     const createMutation = useCreateChapterMutation();
+    const crawlMutation = useCreateCrawlJobMutation();
+    const crawlQuery = useCurrentCrawlJobQuery();
+    const crawlActive = isActiveCrawlJob(crawlQuery.data);
     const updateMutation = useUpdateChapterMutation();
     const deleteMutation = useDeleteChapterMutation();
 
@@ -349,8 +354,35 @@ export function NovelDetailPage() {
                                 {ttsAction.label}
                             </Button>
                         ) : null}
-                        <Button icon={<CloudDownloadOutlined />} onClick={() => navigate(`/crawl?novelId=${novel.id}`)}>
-                            Cào chương
+                        <Button
+                            icon={<CloudDownloadOutlined />}
+                            loading={crawlMutation.isPending}
+                            disabled={crawlActive}
+                            title={crawlActive ? 'Đang có tác vụ cào khác' : undefined}
+                            onClick={() => {
+                                if (selectedNumbers.length === 0) {
+                                    navigate(`/crawl?novelId=${novel.id}`);
+                                    return;
+                                }
+                                const chapterRange = formatChapterRangeInput(selectedNumbers);
+                                crawlMutation.mutate(
+                                    {
+                                        novelId: novel.id,
+                                        url: novel.url,
+                                        scope: 'chapters',
+                                        chapterRange,
+                                    },
+                                    {
+                                        onSuccess: (job) => {
+                                            message.success(`Đã tạo tác vụ cào ${chapterRange}`);
+                                            navigate(`/crawl?jobId=${job.id}`);
+                                        },
+                                        onError: (error) => message.error(getErrorMessage(error, 'Không tạo được tác vụ cào')),
+                                    },
+                                );
+                            }}
+                        >
+                            {selectedNumbers.length > 0 ? `Cào ${selectedNumbers.length} chương` : 'Cào chương'}
                         </Button>
                         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
                             Thêm chương

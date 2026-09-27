@@ -86,9 +86,19 @@ export const CRAWL_STATUS_LABEL: Record<CrawlJobStatus, string> = {
 };
 
 const ACTIVE: CrawlJobStatus[] = ['pending', 'running', 'paused', 'waiting_for_manual_action'];
+const EDITABLE: CrawlJobStatus[] = ['cancelled', 'failed', 'completed', 'completed_with_errors'];
+const RESUMABLE: CrawlJobStatus[] = ['paused', 'cancelled', 'failed', 'completed', 'completed_with_errors'];
 
 export function isActiveCrawlJob(job: CrawlJob | null | undefined): boolean {
     return !!job && ACTIVE.includes(job.status);
+}
+
+export function canEditCrawlJob(status: CrawlJobStatus): boolean {
+    return EDITABLE.includes(status);
+}
+
+export function canResumeCrawlJob(status: CrawlJobStatus): boolean {
+    return RESUMABLE.includes(status);
 }
 
 export const lookupCrawlUrl = (url: string) => axiosClient.get<CrawlLookup>('/crawl/lookup', { params: { url } });
@@ -104,6 +114,13 @@ export const getCrawlJobChapters = (id: number, status?: CrawlChapterStatus) =>
 export const getCurrentCrawlJob = () => axiosClient.get<CrawlJob | null>('/crawl/jobs/current');
 
 export const createCrawlJob = (body: CreateCrawlJobBody) => axiosClient.post<CrawlJob>('/crawl/jobs', body);
+
+export const updateCrawlJob = (id: number, body: CreateCrawlJobBody) => axiosClient.patch<CrawlJob>(`/crawl/jobs/${id}`, body);
+
+export const deleteCrawlJob = (id: number) => axiosClient.delete<{ ok: true }>(`/crawl/jobs/${id}`);
+
+export const getCrawlLogs = (jobId?: number) =>
+    axiosClient.get<{ lines: string[] }>('/crawl/logs', { params: { lines: 400, ...(jobId ? { jobId } : {}) } });
 
 export const pauseCrawlJob = (id: number) => axiosClient.post<CrawlJob>(`/crawl/jobs/${id}/pause`);
 

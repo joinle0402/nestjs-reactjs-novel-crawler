@@ -18,6 +18,7 @@ if str(WORKER_DIR) not in sys.path:
     sys.path.insert(0, str(WORKER_DIR))
 
 from crawl_jobs import fetch_active_job, fetch_job, mark_if_open, reset_running_chapters
+from log_utils import install_line_timestamps
 
 LOCK_PATH = WORKER_DIR / "crawl_worker.lock"
 PID_PATH = WORKER_DIR / "crawl_runner.pid"
@@ -26,16 +27,16 @@ _lock_handle = None
 
 
 def _configure_stdio() -> None:
-    if sys.platform != "win32":
-        return
-    for name in ("stdout", "stderr"):
-        stream = getattr(sys, name, None)
-        if stream is None or not hasattr(stream, "reconfigure"):
-            continue
-        try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
+    if sys.platform == "win32":
+        for name in ("stdout", "stderr"):
+            stream = getattr(sys, name, None)
+            if stream is None or not hasattr(stream, "reconfigure"):
+                continue
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+    install_line_timestamps()
 
 
 def acquire_lock() -> bool:

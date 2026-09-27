@@ -5,8 +5,10 @@ import {
     cancelCrawlJob,
     continueCrawlJob,
     createCrawlJob,
+    deleteCrawlJob,
     getCrawlJob,
     getCrawlJobChapters,
+    getCrawlLogs,
     getCurrentCrawlJob,
     isActiveCrawlJob,
     listCrawlJobs,
@@ -14,6 +16,7 @@ import {
     pauseCrawlJob,
     resumeCrawlJob,
     retryCrawlJob,
+    updateCrawlJob,
     type CrawlChapterStatus,
     type CrawlJobStatus,
     type CreateCrawlJobBody,
@@ -127,6 +130,15 @@ export function useCrawlChaptersQuery(id: number | null, status: CrawlChapterSta
     });
 }
 
+export function useCrawlLogsQuery(enabled: boolean, jobId?: number | null) {
+    return useQuery({
+        queryKey: [...crawlKeys.all, 'logs', jobId ?? 0],
+        queryFn: () => getCrawlLogs(jobId ?? undefined),
+        enabled,
+        refetchInterval: enabled ? 2000 : false,
+    });
+}
+
 export function useCreateCrawlJobMutation() {
     const queryClient = useQueryClient();
     return useMutation({
@@ -135,6 +147,22 @@ export function useCreateCrawlJobMutation() {
             queryClient.setQueryData(crawlKeys.current, job);
             void queryClient.invalidateQueries({ queryKey: crawlKeys.all });
         },
+    });
+}
+
+export function useUpdateCrawlJobMutation() {
+    const invalidate = useInvalidateCrawl();
+    return useMutation({
+        mutationFn: ({ id, body }: { id: number; body: CreateCrawlJobBody }) => updateCrawlJob(id, body),
+        onSuccess: (job) => invalidate(job.id),
+    });
+}
+
+export function useDeleteCrawlJobMutation() {
+    const invalidate = useInvalidateCrawl();
+    return useMutation({
+        mutationFn: (id: number) => deleteCrawlJob(id),
+        onSuccess: () => invalidate(),
     });
 }
 

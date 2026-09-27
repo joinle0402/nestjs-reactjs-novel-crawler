@@ -39,7 +39,7 @@ export class CrawlWorkerService implements OnModuleInit, OnModuleDestroy {
         const logDir = path.join(workerDir, 'logs');
         mkdirSync(logDir, { recursive: true });
         const logPath = path.join(logDir, 'crawl_worker.log');
-        appendFileSync(logPath, `\n--- spawn ${python.command} ${args.join(' ')} ---\n`);
+        appendFileSync(logPath, `\n[${logStamp()}] --- spawn ${python.command} ${args.join(' ')} ---\n`);
         const logFd = openSync(logPath, 'a');
         const startedAt = Date.now();
 
@@ -50,11 +50,11 @@ export class CrawlWorkerService implements OnModuleInit, OnModuleDestroy {
         });
         this.logger.log(`Crawl worker pid=${this.child.pid ?? '?'} (${python.command})`);
         this.child.on('error', (error: NodeJS.ErrnoException) => {
-            appendFileSync(logPath, `spawn error: ${error.message}\n`);
+            appendFileSync(logPath, `[${logStamp()}] spawn error: ${error.message}\n`);
             this.logger.error(`Không chạy được crawl worker: ${error.message}`);
         });
         this.child.on('exit', (code, exitSignal) => {
-            appendFileSync(logPath, `exit code=${code} signal=${exitSignal ?? ''}\n`);
+            appendFileSync(logPath, `[${logStamp()}] exit code=${code} signal=${exitSignal ?? ''}\n`);
             if (this.stopping || code === 0) {
                 return;
             }
@@ -74,4 +74,10 @@ export class CrawlWorkerService implements OnModuleInit, OnModuleDestroy {
             }, 2000);
         });
     }
+}
+
+function logStamp(): string {
+    const now = new Date();
+    const part = (value: number) => String(value).padStart(2, '0');
+    return `${part(now.getDate())}/${part(now.getMonth() + 1)}/${now.getFullYear()} ${part(now.getHours())}:${part(now.getMinutes())}:${part(now.getSeconds())}`;
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CrawlService } from './crawl.service';
 import { CreateCrawlJobRequest, ListCrawlChaptersQuery, ListCrawlJobsQuery } from './dtos/requests/crawl.request';
@@ -14,6 +14,14 @@ export class CrawlController {
     @ApiOkResponse({ type: CrawlLookupResponse })
     lookup(@Query('url') url = ''): Promise<CrawlLookupResponse> {
         return this.crawlService.lookup(url);
+    }
+
+    @Get('logs')
+    @ApiOperation({ summary: 'Đuôi log crawler của phiên job mới nhất, hoặc đúng jobId' })
+    logs(@Query('lines') lines?: string, @Query('jobId') jobId?: string): Promise<{ lines: string[] }> {
+        const maxLines = Number(lines);
+        const parsedJobId = Number(jobId);
+        return this.crawlService.getLogs(Number.isFinite(maxLines) && maxLines > 0 ? maxLines : 400, Number.isFinite(parsedJobId) && parsedJobId > 0 ? parsedJobId : undefined);
     }
 
     @Get('jobs/current')
@@ -58,9 +66,22 @@ export class CrawlController {
         return this.crawlService.pause(id);
     }
 
+    @Patch('jobs/:id')
+    @ApiOperation({ summary: 'Sửa URL, phạm vi của task đã dừng. Không tạo task mới.' })
+    update(@Param('id', ParseIntPipe) id: number, @Body() request: CreateCrawlJobRequest): Promise<CrawlJobResponse> {
+        return this.crawlService.update(id, request);
+    }
+
+    @Delete('jobs/:id')
+    @HttpCode(200)
+    @ApiOperation({ summary: 'Xóa lịch sử task đã dừng. Không xóa nội dung chương.' })
+    remove(@Param('id', ParseIntPipe) id: number): Promise<{ ok: true }> {
+        return this.crawlService.remove(id);
+    }
+
     @Post('jobs/:id/resume')
     @HttpCode(200)
-    @ApiOperation({ summary: 'Tiếp tục job đang tạm dừng' })
+    @ApiOperation({ summary: 'Tiếp tục đúng task này. Chương đã có nội dung được worker bỏ qua.' })
     resume(@Param('id', ParseIntPipe) id: number): Promise<CrawlJobResponse> {
         return this.crawlService.resume(id);
     }

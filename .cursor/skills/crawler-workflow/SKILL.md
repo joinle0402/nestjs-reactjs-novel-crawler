@@ -29,17 +29,18 @@ Use this map, then `search_graph` / `get_code_snippet` for the one symbol you wi
 - Job statuses: `pending`, `running`, `paused`, `waiting_for_manual_action`, `completed`, `completed_with_errors`, `failed`, `cancelled`.
 - Active jobs: `pending`, `running`, `paused`, `waiting_for_manual_action` (`CRAWL_ACTIVE_STATUSES`).
 - One active crawl at a time. Respect `crawl_worker.lock` and `crawl_runner.pid`.
+- Resume keeps the same job. `paused` returns to `running`. `cancelled`, `failed`, `completed`, and `completed_with_errors` go back to `pending` so the existing worker starts one runner. Chapters that already have content are skipped inside `_crawl_novel`.
 - Store extracted chapter text as read. Do not rewrite, summarize, or invent chapter content.
 - Forbidden, captcha, and temporary server errors recover or wait inside `worker/crawler.py`. Do not drop those paths when adding a feature.
 - `browser_state.json` is gitignored session state. Do not commit it or print cookies.
 
-API surface on `CrawlController`: `lookup`, `current`, `list`, `create`, `getOne`, `chapters`, `pause`, `resume`, `continueManual`, `cancel`, `retry`.
+API surface on `CrawlController`: `lookup`, `logs`, `current`, `list`, `create`, `getOne`, `update`, `remove`, `chapters`, `pause`, `resume`, `continueManual`, `cancel`, `retry`.
 
 ## Where to look
 
 | Change | Start here |
 | --- | --- |
-| Job create, pause, resume, cancel, retry | `CrawlService` in `backend/src/crawl/crawl.service.ts` |
+| Job create, update, remove, pause, resume, cancel, retry | `CrawlService` in `backend/src/crawl/crawl.service.ts` |
 | Launch or stop the worker | `CrawlWorkerService`, `worker/crawl_worker.py` |
 | Per-job chapter plan and status | `replace_plan`, `set_chapter`, `claim_job` in `worker/crawl_jobs.py` |
 | Page navigation, forbidden, captcha | `_goto_chapter`, `_recover_from_forbidden`, `_wait_for_content_with_captcha` |
@@ -65,3 +66,4 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 ## Changelog
 
 - 2026-09-27 — Initial map: scopes, job statuses, worker chain, content invariant.
+- 2026-09-27 — API adds `logs`, `update`, `remove`. Resume of a stopped job requeues that same job id.

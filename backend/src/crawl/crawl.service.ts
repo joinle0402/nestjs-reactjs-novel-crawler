@@ -1,5 +1,8 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { closeSync, existsSync, openSync, readSync } from 'fs';
+import { stat } from 'fs/promises';
+import path from 'path';
 import { DataSource, In, Repository } from 'typeorm';
 import { Chapter } from 'src/chapters/chapters.entity';
 import { JobStatus } from 'src/common/enums/job-status.enum';
@@ -7,6 +10,7 @@ import { throwIf, throwUnless } from 'src/common/utils/throw-if';
 import { Novel } from 'src/novels/entities/novel.entity';
 import { NovelsService } from 'src/novels/novels.service';
 import { ChapterRangeParseError, formatChapterList, parseChapterRange } from 'src/tts/chapter-range';
+import { resolveWorkerDir } from 'src/tts/tts-settings.service';
 import { CreateCrawlJobRequest, ListCrawlChaptersQuery, ListCrawlJobsQuery } from './dtos/requests/crawl.request';
 import { CrawlJobChapterResponse, CrawlJobListResponse, CrawlJobProgress, CrawlJobResponse, CrawlLookupResponse } from './dtos/responses/crawl.response';
 import { CrawlJobChapter } from './entities/crawl-job-chapter.entity';
@@ -14,6 +18,7 @@ import { CRAWL_ACTIVE_STATUSES, CrawlJob, type CrawlJobStatus, type CrawlScope }
 import { NovelUrlError, normalizeNovelUrl } from './novel-url';
 
 const CRAWL_JOB_LOCK = 'novel_crawler_crawl_job';
+const CRAWL_STOPPED_STATUSES: CrawlJobStatus[] = ['cancelled', 'failed', 'completed', 'completed_with_errors'];
 const RECENT_JOB_MS = 20_000;
 const MIN_CONTENT_LENGTH = 50;
 
@@ -111,7 +116,101 @@ export class CrawlService {
     }
 
     async resume(id: number): Promise<CrawlJobResponse> {
-        return this.transition(id, ['paused'], 'running', false);
+        const job = await this.jobsRepository.findOneBy({ id });
+        throwUnless(job, 'Không tìm thấy job cào', HttpStatus.NOT_FOUND);
+        if (job.status === 'paused') {
+            return this.transition(id, ['paused'], 'running', false);
+        }
+        throwUnless(CRAWL_STOPPED_STATUSES.includes(job.status), 'Job không ở trạng thái cho phép tiếp tục', HttpStatus.CONFLICT);
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        let acquired = false;
+        try {
+            await queryRunner.startTransaction();
+            const locked = await queryRunner.query('SELECT GET_LOCK(?, 10) AS got', [CRAWL_JOB_LOCK]);
+            acquired = this.lockAcquired(locked);
+            throwUnless(acquired, 'Không lấy được khóa job cào', HttpStatus.CONFLICT);
+            const active = await queryRunner.manager.count(CrawlJob, { where: { status: In(CRAWL_ACTIVE_STATUSES) } });
+            throwIf(active > 0, 'Đang có job cào khác. Hủy job hiện tại trước khi tiếp tục.', HttpStatus.CONFLICT);
+            const result = await queryRunner.manager.update(
+                CrawlJob,
+                { id, status: In(CRAWL_STOPPED_STATUSES) },
+                { status: 'pending', finishedAt: null, errorMessage: null, currentChapter: null },
+            );
+            throwUnless(result.affected, 'Job đã đổi trạng thái', HttpStatus.CONFLICT);
+            await queryRunner.manager.update(CrawlJobChapter, { jobId: id, status: 'running' }, { status: 'pending', finishedAt: null });
+            await queryRunner.commitTransaction();
+        } catch (error) {
+            if (queryRunner.isTransactionActive) {
+                await queryRunner.rollbackTransaction();
+            }
+            throw error;
+        } finally {
+            if (acquired) {
+                try {
+                    await queryRunner.query('SELECT RELEASE_LOCK(?)', [CRAWL_JOB_LOCK]);
+                } catch {
+                    // connection có thể đã đóng sau rollback
+                }
+            }
+            await queryRunner.release();
+        }
+        return this.getOne(id);
+    }
+
+    async update(id: number, request: CreateCrawlJobRequest): Promise<CrawlJobResponse> {
+        const job = await this.jobsRepository.findOneBy({ id });
+        throwUnless(job, 'Không tìm thấy job cào', HttpStatus.NOT_FOUND);
+        throwUnless(CRAWL_STOPPED_STATUSES.includes(job.status), 'Chỉ sửa được task đã dừng', HttpStatus.CONFLICT);
+        const resolved = await this.resolveTarget(request);
+        const result = await this.jobsRepository.update(
+            { id, status: In(CRAWL_STOPPED_STATUSES) },
+            {
+                novelId: resolved.novelId,
+                url: resolved.url,
+                scope: resolved.scope,
+                chapterRange: resolved.chapterRange,
+                chapterNumbers: resolved.chapterNumbers,
+                totalChapters: resolved.totalChapters,
+                errorMessage: null,
+                currentChapter: null,
+            },
+        );
+        throwUnless(result.affected, 'Job đã đổi trạng thái', HttpStatus.CONFLICT);
+        await this.jobChaptersRepository.delete({ jobId: id });
+        return this.getOne(id);
+    }
+
+    async remove(id: number): Promise<{ ok: true }> {
+        const job = await this.jobsRepository.findOneBy({ id });
+        throwUnless(job, 'Không tìm thấy job cào', HttpStatus.NOT_FOUND);
+        throwIf(CRAWL_ACTIVE_STATUSES.includes(job.status), 'Không xóa task đang chạy. Hủy task trước.', HttpStatus.CONFLICT);
+        await this.jobChaptersRepository.delete({ jobId: id });
+        await this.jobsRepository.delete({ id });
+        return { ok: true };
+    }
+
+    async getLogs(maxLines = 400, jobId?: number): Promise<{ lines: string[] }> {
+        const logPath = path.join(resolveWorkerDir(), 'logs', 'crawl_worker.log');
+        if (!existsSync(logPath)) {
+            return { lines: [] };
+        }
+        try {
+            const stats = await stat(logPath);
+            const bytesToRead = Math.min(stats.size, 128 * 1024);
+            const buffer = Buffer.alloc(bytesToRead);
+            const fd = openSync(logPath, 'r');
+            try {
+                readSync(fd, buffer, 0, bytesToRead, Math.max(0, stats.size - bytesToRead));
+            } finally {
+                closeSync(fd);
+            }
+            const content = buffer.toString('utf-8');
+            const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
+            return { lines: sliceCrawlLogSession(lines, jobId).slice(-maxLines) };
+        } catch (error) {
+            return { lines: [`Không thể đọc log: ${error}`] };
+        }
     }
 
     async continueManual(id: number): Promise<CrawlJobResponse> {
@@ -462,4 +561,41 @@ export class CrawlService {
         }
         return undefined;
     }
+}
+
+const SESSION_MARKER = /=== session job=(\d+) ===/;
+
+function sliceCrawlLogSession(lines: string[], jobId?: number): string[] {
+    if (jobId) {
+        let start = -1;
+        for (let index = lines.length - 1; index >= 0; index -= 1) {
+            const match = lines[index].match(SESSION_MARKER);
+            if (match && Number(match[1]) === jobId) {
+                start = index;
+                break;
+            }
+        }
+        if (start < 0) {
+            return [];
+        }
+        let end = lines.length;
+        for (let index = start + 1; index < lines.length; index += 1) {
+            if (SESSION_MARKER.test(lines[index])) {
+                end = index;
+                break;
+            }
+        }
+        return lines.slice(start, end);
+    }
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+        if (SESSION_MARKER.test(lines[index])) {
+            return lines.slice(index);
+        }
+    }
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+        if (lines[index].includes('--- spawn ')) {
+            return lines.slice(index);
+        }
+    }
+    return lines.slice(-80);
 }

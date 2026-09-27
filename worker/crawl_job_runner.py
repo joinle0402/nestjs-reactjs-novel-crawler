@@ -13,6 +13,7 @@ if str(WORKER_DIR) not in sys.path:
     sys.path.insert(0, str(WORKER_DIR))
 
 from crawler import CrawlControl, CrawlFailed, CrawlStopped, crawl_novel
+from log_utils import install_line_timestamps
 from crawl_jobs import (
     attach_novel,
     claim_job,
@@ -28,16 +29,16 @@ PID_PATH = WORKER_DIR / "crawl_runner.pid"
 
 
 def _configure_stdio() -> None:
-    if sys.platform != "win32":
-        return
-    for name in ("stdout", "stderr"):
-        stream = getattr(sys, name, None)
-        if stream is None or not hasattr(stream, "reconfigure"):
-            continue
-        try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
+    if sys.platform == "win32":
+        for name in ("stdout", "stderr"):
+            stream = getattr(sys, name, None)
+            if stream is None or not hasattr(stream, "reconfigure"):
+                continue
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+    install_line_timestamps()
 
 
 def _write_pid() -> None:
@@ -119,6 +120,7 @@ def run_job(job_id: int) -> None:
             return
         novel_id = job["novel_id"]
         numbers = job["chapter_numbers"]
+        print(f"=== session job={job_id} ===", flush=True)
         print(f"[Crawl job {job_id}] url={job['url']} scope={job['scope']}", flush=True)
         crawl_novel(
             novel_url=job["url"],
