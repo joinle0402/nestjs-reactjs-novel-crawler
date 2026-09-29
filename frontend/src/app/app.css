@@ -190,6 +190,56 @@ a {
     color: #1677ff;
 }
 
+.tts-job-line--clickable {
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 2px 8px;
+    margin: 0 -8px;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tts-job-line--clickable:hover {
+    background: rgba(22, 119, 255, 0.06);
+}
+
+.tts-job-line--clickable:active {
+    transform: translateY(1px);
+}
+
+.tts-job-line--clickable:focus-visible {
+    outline: 2px solid #1677ff;
+    outline-offset: 2px;
+}
+
+.tts-job-line__status {
+    flex-shrink: 0;
+    margin-inline-end: 0;
+}
+
+.tts-job-line__progress {
+    width: 180px;
+    flex-shrink: 0;
+}
+
+.tts-job-line__progress .ant-progress {
+    margin: 0;
+    line-height: 1;
+}
+
+.tts-job-line__progress .ant-progress-text {
+    font-variant-numeric: tabular-nums;
+}
+
+.tts-job-line__failed {
+    cursor: pointer;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.tts-job-line__actions {
+    flex-shrink: 0;
+}
+
 .bottom-player__meta {
     display: flex;
     align-items: center;

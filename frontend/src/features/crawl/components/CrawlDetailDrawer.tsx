@@ -24,9 +24,9 @@ type CrawlDetailDrawerProps = {
     onChapterFilter: (value: CrawlChapterStatus | '') => void;
     onClose: () => void;
     onAction: (action: 'pause' | 'resume' | 'continue' | 'cancel' | 'retry', id: number) => void;
-    onEdit: (job: CrawlJob) => void;
-    onClone: (job: CrawlJob) => void;
-    onDelete: (job: CrawlJob) => void;
+    onEdit?: (job: CrawlJob) => void;
+    onClone?: (job: CrawlJob) => void;
+    onDelete?: (job: CrawlJob) => void;
 };
 
 function statusColor(status: CrawlJobStatus | CrawlChapterStatus): string {
@@ -144,15 +144,15 @@ export function CrawlDetailDrawer({
                                     Hủy tác vụ
                                 </Button>
                             ) : null}
-                            {canEditCrawlJob(job.status) ? <Button onClick={() => onEdit(job)}>Sửa</Button> : null}
-                            <Button onClick={() => onClone(job)}>Clone</Button>
+                            {onEdit && canEditCrawlJob(job.status) ? <Button onClick={() => onEdit(job)}>Sửa</Button> : null}
+                            {onClone ? <Button onClick={() => onClone(job)}>Clone</Button> : null}
                             <Button onClick={() => setLogOpen(true)}>Xem log</Button>
                             {job.progress.failed > 0 ? (
                                 <Button onClick={() => onAction('retry', job.id)} loading={actionPending} disabled={activeJobId != null}>
                                     Cào lại chương lỗi
                                 </Button>
                             ) : null}
-                            {!isActiveCrawlJob(job) ? (
+                            {!isActiveCrawlJob(job) && onDelete ? (
                                 <Button danger onClick={() => onDelete(job)}>
                                     Xóa
                                 </Button>

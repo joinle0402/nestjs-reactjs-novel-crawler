@@ -85,6 +85,17 @@ export const CRAWL_STATUS_LABEL: Record<CrawlJobStatus, string> = {
     cancelled: 'Đã hủy',
 };
 
+export const CRAWL_STATUS_COLOR: Record<CrawlJobStatus, string> = {
+    pending: 'warning',
+    running: 'processing',
+    paused: 'warning',
+    waiting_for_manual_action: 'gold',
+    completed: 'success',
+    completed_with_errors: 'error',
+    failed: 'error',
+    cancelled: 'default',
+};
+
 const ACTIVE: CrawlJobStatus[] = ['pending', 'running', 'paused', 'waiting_for_manual_action'];
 const EDITABLE: CrawlJobStatus[] = ['cancelled', 'failed', 'completed', 'completed_with_errors'];
 const RESUMABLE: CrawlJobStatus[] = ['paused', 'cancelled', 'failed', 'completed', 'completed_with_errors'];
