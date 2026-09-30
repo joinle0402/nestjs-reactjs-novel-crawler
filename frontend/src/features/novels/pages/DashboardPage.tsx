@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Button, Card, Empty, Input, Modal, Progress, Space, Spin, Table, Typography, message } from 'antd';
+import { Alert, Button, Card, Empty, Input, Modal, Space, Spin, Table, Tooltip, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -13,11 +13,17 @@ import { NovelFormModal, type NovelFormValues } from '@/features/novels/componen
 import type { NovelListItem } from '@/features/novels/api/novelsApi.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 
-function percent(done: number, total: number): number {
-    if (total <= 0) {
-        return 0;
+function statusOf(done: number, failed: number, total: number): { color: string; label: string; running: boolean } {
+    if (failed > 0) {
+        return { color: '#ff4d4f', label: 'Có lỗi', running: false };
     }
-    return Math.round((done / total) * 100);
+    if (total > 0 && done >= total) {
+        return { color: '#52c41a', label: 'Hoàn tất', running: false };
+    }
+    if (done > 0) {
+        return { color: '#1677ff', label: 'Đang chạy', running: true };
+    }
+    return { color: '#d9d9d9', label: 'Chưa bắt đầu', running: false };
 }
 
 export function DashboardPage() {
@@ -140,42 +146,40 @@ export function DashboardPage() {
         {
             title: 'Crawl',
             key: 'crawl',
-            width: 140,
-            render: (_, novel) => (
-                <Progress
-                    percent={percent(novel.stats.crawled, novel.stats.total)}
-                    size="small"
-                    status={novel.stats.crawlFailed > 0 ? 'exception' : undefined}
-                    format={(p) => `${p}%`}
-                />
-            ),
+            width: 110,
+            render: (_, novel) => {
+                const s = novel.stats;
+                const { color, label, running } = statusOf(s.crawled, s.crawlFailed, s.total);
+                return (
+                    <Tooltip title={`${label}: ${s.crawled}/${s.total} chương đã crawl`}>
+                        <span className="status-count">
+                            <span
+                                className={running ? 'status-dot status-dot--running' : 'status-dot'}
+                                style={{ background: color }}
+                            />
+                            <span>{s.crawled}/{s.total}</span>
+                        </span>
+                    </Tooltip>
+                );
+            },
         },
         {
             title: 'TTS',
             key: 'tts',
-            width: 140,
-            render: (_, novel) => (
-                <Progress
-                    percent={percent(novel.stats.ttsDone, novel.stats.total)}
-                    size="small"
-                    status={novel.stats.ttsFailed > 0 ? 'exception' : undefined}
-                    format={(p) => `${p}%`}
-                />
-            ),
-        },
-        {
-            title: 'Lỗi',
-            key: 'failed',
-            width: 100,
-            align: 'right',
+            width: 110,
             render: (_, novel) => {
-                const total = novel.stats.crawlFailed + novel.stats.ttsFailed;
-                return total > 0 ? (
-                    <Typography.Text type="danger">
-                        {novel.stats.crawlFailed}/{novel.stats.ttsFailed}
-                    </Typography.Text>
-                ) : (
-                    <Typography.Text type="secondary">0</Typography.Text>
+                const s = novel.stats;
+                const { color, label, running } = statusOf(s.ttsDone, s.ttsFailed, s.total);
+                return (
+                    <Tooltip title={`${label}: ${s.ttsDone}/${s.total} chương đã TTS`}>
+                        <span className="status-count">
+                            <span
+                                className={running ? 'status-dot status-dot--running' : 'status-dot'}
+                                style={{ background: color }}
+                            />
+                            <span>{s.ttsDone}/{s.total}</span>
+                        </span>
+                    </Tooltip>
                 );
             },
         },
@@ -186,21 +190,25 @@ export function DashboardPage() {
             fixed: 'right',
             render: (_, novel) => (
                 <Space size={0} onClick={(event) => event.stopPropagation()}>
-                    <Button
-                        type="text"
-                        size="small"
-                        icon={<EditOutlined />}
-                        aria-label="Sửa truyện"
-                        onClick={() => openEdit(novel)}
-                    />
-                    <Button
-                        type="text"
-                        size="small"
-                        danger
-                        icon={<DeleteOutlined />}
-                        aria-label="Xóa truyện"
-                        onClick={() => handleDelete(novel)}
-                    />
+                    <Tooltip title="Sửa">
+                        <Button
+                            type="text"
+                            size="small"
+                            icon={<EditOutlined />}
+                            aria-label="Sửa truyện"
+                            onClick={() => openEdit(novel)}
+                        />
+                    </Tooltip>
+                    <Tooltip title="Xóa">
+                        <Button
+                            type="text"
+                            size="small"
+                            className="row-action-delete"
+                            icon={<DeleteOutlined />}
+                            aria-label="Xóa truyện"
+                            onClick={() => handleDelete(novel)}
+                        />
+                    </Tooltip>
                 </Space>
             ),
         },
@@ -265,7 +273,7 @@ export function DashboardPage() {
                             style: { cursor: 'pointer' },
                             onClick: () => navigate(`/novels/${novel.id}`),
                         })}
-                        scroll={{ x: 820 }}
+                        scroll={{ x: 700 }}
                     />
                 )}
             </Card>
