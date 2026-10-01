@@ -25,7 +25,7 @@ Use this map, then `search_graph` / `get_code_snippet` for the one symbol you wi
 
 ## Contract
 
-- Scopes: `missing`, `failed`, `chapters` (`CRAWL_SCOPES`).
+- Scopes: `missing`, `failed`, `chapters`, `refresh` (`CRAWL_SCOPES`). `refresh` re-fetches the site chapter list (forces `_needs_chapter_list_api`), creates records for new chapters, then crawls chapters without content.
 - Job statuses: `pending`, `running`, `paused`, `waiting_for_manual_action`, `completed`, `completed_with_errors`, `failed`, `cancelled`.
 - Active jobs: `pending`, `running`, `paused`, `waiting_for_manual_action` (`CRAWL_ACTIVE_STATUSES`).
 - One active crawl at a time. Respect `crawl_worker.lock` and `crawl_runner.pid`.
@@ -67,3 +67,4 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 
 - 2026-09-27 — Initial map: scopes, job statuses, worker chain, content invariant.
 - 2026-09-27 — API adds `logs`, `update`, `remove`. Resume of a stopped job requeues that same job id.
+- 2026-09-30 — Add scope `refresh` (update new chapter list). `crawl_jobs.rest_until`/`rest_kind` expose per-chapter and batch pause state to the API/UI; `CrawlControl.on_rest` reports it.

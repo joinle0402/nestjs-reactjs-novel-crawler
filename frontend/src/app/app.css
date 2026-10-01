@@ -252,6 +252,18 @@ a {
     margin-inline-end: 0;
 }
 
+.tts-job-line__current {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.tts-job-line__rest {
+    flex-shrink: 0;
+    margin-inline-end: 0;
+    font-variant-numeric: tabular-nums;
+}
+
 .tts-job-line__progress {
     width: 180px;
     flex-shrink: 0;

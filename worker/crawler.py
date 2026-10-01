@@ -167,6 +167,10 @@ class CrawlControl:
     ) -> None:
         return
 
+    def on_rest(self, seconds: float, kind: str) -> None:
+        """Báo thời gian nghỉ (kind: 'chapter' | 'batch'); seconds <= 0 là xong nghỉ."""
+        return
+
 
 _crawl_control: ContextVar[CrawlControl] = ContextVar("crawl_control", default=CrawlControl())
 
@@ -368,7 +372,9 @@ def _sleep_between_chapters(chapters_saved: int) -> None:
     hi = max(DELAY_BETWEEN_CHAPTERS_MIN, DELAY_BETWEEN_CHAPTERS_MAX)
     delay = random.uniform(lo, hi)
     print(f"  Nghỉ {delay:.1f}s trước chương tiếp...")
+    _ctrl().on_rest(delay, "chapter")
     _interruptible_sleep(delay)
+    _ctrl().on_rest(0, "chapter")
     if (
         CRAWL_BATCH_EVERY > 0
         and chapters_saved > 0
@@ -377,7 +383,9 @@ def _sleep_between_chapters(chapters_saved: int) -> None:
         print(
             f"  Nghỉ batch {CRAWL_BATCH_PAUSE_SEC}s sau {chapters_saved} chương đã cào..."
         )
+        _ctrl().on_rest(float(CRAWL_BATCH_PAUSE_SEC), "batch")
         _interruptible_sleep(CRAWL_BATCH_PAUSE_SEC)
+        _ctrl().on_rest(0, "batch")
 
 
 def _wait_for_content(page: Page) -> None:
@@ -448,8 +456,11 @@ def _chapters_from_db(novel_url: str, db_chapters) -> list[ChapterInfo]:
 def _needs_chapter_list_api(
     novel_id: int,
     required_numbers: set[int] | None,
+    force: bool = False,
 ) -> bool:
     """Gọi API khi DB thiếu record cho bất kỳ chương nào trong phạm vi."""
+    if force:
+        return True
     existing = get_chapters_for_novel(novel_id)
     if not existing:
         return True
@@ -672,6 +683,7 @@ def crawl_novel(
     novel_id: int | None = None,
     tts_chapter_numbers: frozenset[int] | None = None,
     control: CrawlControl | None = None,
+    refresh_chapter_list: bool = False,
 ) -> int:
     token = _crawl_control.set(control or CrawlControl())
     try:
@@ -682,6 +694,7 @@ def crawl_novel(
             run_tts=run_tts,
             novel_id=novel_id,
             tts_chapter_numbers=tts_chapter_numbers,
+            refresh_chapter_list=refresh_chapter_list,
         )
     finally:
         _crawl_control.reset(token)
@@ -694,6 +707,7 @@ def _crawl_novel(
     run_tts: bool = True,
     novel_id: int | None = None,
     tts_chapter_numbers: frozenset[int] | None = None,
+    refresh_chapter_list: bool = False,
 ) -> int:
     if novel_id is not None:
         novel = get_novel_by_id(novel_id)
@@ -710,7 +724,7 @@ def _crawl_novel(
     if "sangtacviet.com" not in novel_url:
         raise ValueError("URL phải thuộc sangtacviet.com")
 
-    if chapter_numbers is None and max_chapters is None:
+    if chapter_numbers is None and max_chapters is None and not refresh_chapter_list:
         max_chapters = MAX_CHAPTERS
 
     required_numbers = _resolve_chapter_numbers(max_chapters, chapter_numbers)
@@ -777,7 +791,8 @@ def _crawl_novel(
                 summary = existing_novel.summary or ""
 
         need_chapter_list_api = (
-            novel_id is None
+            refresh_chapter_list
+            or novel_id is None
             or _needs_chapter_list_api(novel_id, required_numbers)
         )
         # False = thẳng trang chương nếu DB đủ list; vẫn mở danh sách khi thiếu list

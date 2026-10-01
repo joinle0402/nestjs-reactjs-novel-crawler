@@ -71,3 +71,4 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 
 - 2026-09-27 — Initial map: scopes, engines, worker chain, normalize and resume invariants.
 - 2026-09-27 — VieNeu sentence packing and pause gaps; edge-tts chunk size unchanged.
+- 2026-10-01 — VieNeu runs `VIENEU_BACKEND=torch` via `worker/.env` (RTX GPU, ~8x onnx speed); torch backend needs `transformers` + CUDA torch wheel in `.venv-vieneu`.

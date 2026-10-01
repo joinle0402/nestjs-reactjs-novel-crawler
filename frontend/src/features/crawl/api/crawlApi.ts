@@ -1,6 +1,8 @@
 import { axiosClient } from '@/shared/api/axiosClient.ts';
 
-export type CrawlScope = 'missing' | 'failed' | 'chapters';
+export type CrawlScope = 'missing' | 'failed' | 'chapters' | 'refresh';
+
+export type CrawlRestKind = 'chapter' | 'batch';
 
 export type CrawlJobStatus =
     | 'pending'
@@ -34,6 +36,8 @@ export type CrawlJob = {
     chapterRange: string | null;
     chapterNumbers: number[] | null;
     status: CrawlJobStatus;
+    restUntil: string | null;
+    restKind: CrawlRestKind | null;
     errorMessage: string | null;
     startedAt: string | null;
     finishedAt: string | null;

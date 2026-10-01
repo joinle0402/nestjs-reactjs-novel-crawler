@@ -1,7 +1,7 @@
 import { Novel } from 'src/novels/entities/novel.entity';
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
-export const CRAWL_SCOPES = ['missing', 'failed', 'chapters'] as const;
+export const CRAWL_SCOPES = ['missing', 'failed', 'chapters', 'refresh'] as const;
 export type CrawlScope = (typeof CRAWL_SCOPES)[number];
 
 export const CRAWL_JOB_STATUSES = [
@@ -51,6 +51,12 @@ export class CrawlJob {
 
     @Column({ name: 'current_chapter', type: 'int', nullable: true })
     currentChapter!: number | null;
+
+    @Column({ name: 'rest_until', type: 'datetime', nullable: true })
+    restUntil!: Date | null;
+
+    @Column({ name: 'rest_kind', type: 'varchar', length: 20, nullable: true })
+    restKind!: 'chapter' | 'batch' | null;
 
     @Column({ name: 'error_message', type: 'text', nullable: true })
     errorMessage!: string | null;

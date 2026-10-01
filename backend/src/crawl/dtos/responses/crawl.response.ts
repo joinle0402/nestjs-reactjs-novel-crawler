@@ -53,6 +53,12 @@ export class CrawlJobResponse {
     @ApiProperty({ enum: CRAWL_JOB_STATUSES })
     status!: CrawlJobStatus;
 
+    @ApiPropertyOptional({ nullable: true, description: 'Thời điểm hết nghỉ (worker đang nghỉ giữa các chương)' })
+    restUntil!: Date | null;
+
+    @ApiPropertyOptional({ nullable: true, enum: ['chapter', 'batch'] })
+    restKind!: 'chapter' | 'batch' | null;
+
     @ApiPropertyOptional({ nullable: true })
     errorMessage!: string | null;
 

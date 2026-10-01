@@ -15,6 +15,7 @@ import {
     type CrawlJob,
 } from '@/features/crawl/api/crawlApi.ts';
 import { CrawlDetailDrawer } from '@/features/crawl/components/CrawlDetailDrawer.tsx';
+import { CrawlRestTag } from '@/features/crawl/components/CrawlRestTag.tsx';
 import { useCrawlActionMutation, useCrawlChaptersQuery, useCrawlJobQuery } from '@/features/crawl/hooks/useCrawlQueries.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 
@@ -82,6 +83,12 @@ export function CrawlJobLine({ job }: CrawlJobLineProps) {
                         {job.progress.total > 0 ? ` — ${job.progress.completed}/${job.progress.total}` : ''}
                     </Link>
                 </Typography.Text>
+                {isRunning && job.progress.currentChapterNumber != null ? (
+                    <Typography.Text type="secondary" className="tts-job-line__current" onClick={(event) => event.stopPropagation()}>
+                        {`Đang cào: Chương ${job.progress.currentChapterNumber} — [${job.progress.completed + job.progress.failed + job.progress.skipped + 1}/${job.progress.total}]`}
+                    </Typography.Text>
+                ) : null}
+                <CrawlRestTag restUntil={isRunning ? job.restUntil : null} restKind={job.restKind} />
                 <div className="tts-job-line__progress" onClick={(event) => event.stopPropagation()}>
                     <Progress
                         percent={job.progress.percent ?? 0}

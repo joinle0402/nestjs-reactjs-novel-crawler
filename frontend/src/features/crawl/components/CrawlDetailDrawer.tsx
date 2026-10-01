@@ -13,6 +13,7 @@ import {
     type CrawlJobStatus,
 } from '@/features/crawl/api/crawlApi.ts';
 import { CrawlLogDrawer } from '@/features/crawl/components/CrawlLogDrawer.tsx';
+import { CrawlRestTag } from '@/features/crawl/components/CrawlRestTag.tsx';
 
 type CrawlDetailDrawerProps = {
     job: CrawlJob | null;
@@ -73,6 +74,7 @@ export function CrawlDetailDrawer({
 }: CrawlDetailDrawerProps) {
     const [logOpen, setLogOpen] = useState(false);
     const blockedByOther = activeJobId != null && activeJobId !== job?.id;
+    const currentTitle = chapters.find((row) => row.status === 'running')?.title ?? null;
 
     const chapterColumns: ColumnsType<CrawlJobChapter> = [
         { title: 'Chương', dataIndex: 'chapterNumber', width: 90 },
@@ -104,8 +106,14 @@ export function CrawlDetailDrawer({
                             <Typography.Text type="secondary"> — {job.progress.detail}</Typography.Text>
                         </div>
                         <Typography.Text type="secondary">
-                            Phạm vi: {job.scope === 'chapters' ? job.chapterRange || 'khoảng chương' : job.scope === 'missing' ? 'chương chưa có nội dung' : 'chương lỗi'}
+                            Phạm vi: {job.scope === 'chapters' ? job.chapterRange || 'khoảng chương' : job.scope === 'missing' ? 'chương chưa có nội dung' : job.scope === 'failed' ? 'chương lỗi' : job.scope === 'refresh' ? 'cập nhật danh sách chương mới' : job.scope}
                         </Typography.Text>
+                        {job.status === 'running' && job.progress.currentChapterNumber != null ? (
+                            <Typography.Text>
+                                {`Đang cào: Chương ${job.progress.currentChapterNumber}${currentTitle ? ` — ${currentTitle}` : ''} — [${job.progress.completed + job.progress.failed + job.progress.skipped + 1}/${job.progress.total}]`}
+                            </Typography.Text>
+                        ) : null}
+                        <CrawlRestTag restUntil={job.status === 'running' ? job.restUntil : null} restKind={job.restKind} />
                         <Progress percent={job.progress.percent ?? 0} status={job.progress.percent == null ? 'active' : undefined} />
                         <Space size={24} wrap>
                             <span>Hoàn thành: {job.progress.completed}</span>

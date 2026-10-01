@@ -313,6 +313,11 @@ export class CrawlService {
             return { novelId, url, scope: 'missing', chapterRange: null, chapterNumbers: numbers, totalChapters: numbers.length };
         }
 
+        if (request.scope === 'refresh') {
+            throwUnless(novelId, 'Cần truyện đã có trong thư viện để cập nhật danh sách chương mới');
+            return { novelId, url, scope: 'refresh', chapterRange: null, chapterNumbers: null, totalChapters: null };
+        }
+
         const text = request.chapterRange?.trim() ?? '';
         throwUnless(text, 'Nhập phạm vi chương');
         let parsed: ReturnType<typeof parseChapterRange>;
@@ -420,6 +425,8 @@ export class CrawlService {
             chapterRange: job.chapterRange,
             chapterNumbers: this.numbersOf(job),
             status: job.status,
+            restUntil: job.restUntil,
+            restKind: job.restKind,
             errorMessage: job.errorMessage,
             startedAt: job.startedAt,
             finishedAt: job.finishedAt,

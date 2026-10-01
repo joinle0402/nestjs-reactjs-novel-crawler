@@ -24,6 +24,7 @@ from crawl_jobs import (
     replace_plan,
     reset_running_chapters,
     set_chapter,
+    set_rest,
 )
 PID_PATH = WORKER_DIR / "crawl_runner.pid"
 
@@ -99,6 +100,9 @@ class JobCrawlControl(CrawlControl):
     def on_chapter(self, chapter_number: int, status: str, chapter_id: int | None, error: str | None) -> None:
         set_chapter(self.job_id, chapter_number, status, chapter_id, error)
 
+    def on_rest(self, seconds: float, kind: str) -> None:
+        set_rest(self.job_id, seconds, kind)
+
 
 def _finish(job_id: int) -> None:
     counts = count_chapter_statuses(job_id)
@@ -128,6 +132,7 @@ def run_job(job_id: int) -> None:
             run_tts=False,
             novel_id=novel_id,
             control=JobCrawlControl(job_id),
+            refresh_chapter_list=job["scope"] == "refresh",
         )
         current = fetch_job(job_id)
         if not current or current["status"] != "running":

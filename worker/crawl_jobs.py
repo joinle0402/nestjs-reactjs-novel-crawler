@@ -51,6 +51,10 @@ def _missing_table(exc: BaseException) -> bool:
     return isinstance(exc, pymysql.err.ProgrammingError) and bool(exc.args) and exc.args[0] == 1146
 
 
+def _missing_column(exc: BaseException) -> bool:
+    return isinstance(exc, pymysql.err.ProgrammingError) and bool(exc.args) and exc.args[0] == 1054
+
+
 def fetch_job(job_id: int) -> dict[str, Any] | None:
     try:
         with get_db() as conn:
@@ -86,17 +90,34 @@ def fetch_active_job() -> dict[str, Any] | None:
 
 def claim_job(job_id: int) -> bool:
     with get_db() as conn:
-        conn.execute(
-            """
-            UPDATE crawl_jobs
-            SET status='running',
-                started_at=COALESCE(started_at, NOW()),
-                error_message=NULL,
-                updated_at=NOW()
-            WHERE id=? AND status IN ('pending', 'running')
-            """,
-            (job_id,),
-        )
+        try:
+            conn.execute(
+                """
+                UPDATE crawl_jobs
+                SET status='running',
+                    started_at=COALESCE(started_at, NOW()),
+                    error_message=NULL,
+                    rest_until=NULL,
+                    rest_kind=NULL,
+                    updated_at=NOW()
+                WHERE id=? AND status IN ('pending', 'running')
+                """,
+                (job_id,),
+            )
+        except pymysql.err.ProgrammingError as exc:
+            if not _missing_column(exc):
+                raise
+            conn.execute(
+                """
+                UPDATE crawl_jobs
+                SET status='running',
+                    started_at=COALESCE(started_at, NOW()),
+                    error_message=NULL,
+                    updated_at=NOW()
+                WHERE id=? AND status IN ('pending', 'running')
+                """,
+                (job_id,),
+            )
         row = conn.execute("SELECT status FROM crawl_jobs WHERE id=?", (job_id,)).fetchone()
     return bool(row and row["status"] == "running")
 
@@ -133,16 +154,56 @@ def mark_if_open(job_id: int, status: str, error_message: str | None = None) -> 
     if message:
         message = message[:4000]
     with get_db() as conn:
-        conn.execute(
-            """
-            UPDATE crawl_jobs
-            SET status=?, finished_at=NOW(), error_message=?, current_chapter=NULL, updated_at=NOW()
-            WHERE id=? AND status IN ('running', 'paused', 'waiting_for_manual_action')
-            """,
-            (status, message, job_id),
-        )
+        try:
+            conn.execute(
+                """
+                UPDATE crawl_jobs
+                SET status=?, finished_at=NOW(), error_message=?, current_chapter=NULL, rest_until=NULL, rest_kind=NULL, updated_at=NOW()
+                WHERE id=? AND status IN ('running', 'paused', 'waiting_for_manual_action')
+                """,
+                (status, message, job_id),
+            )
+        except pymysql.err.ProgrammingError as exc:
+            if not _missing_column(exc):
+                raise
+            conn.execute(
+                """
+                UPDATE crawl_jobs
+                SET status=?, finished_at=NOW(), error_message=?, current_chapter=NULL, updated_at=NOW()
+                WHERE id=? AND status IN ('running', 'paused', 'waiting_for_manual_action')
+                """,
+                (status, message, job_id),
+            )
         row = conn.execute("SELECT status FROM crawl_jobs WHERE id=?", (job_id,)).fetchone()
     return bool(row and row["status"] == status)
+
+
+def set_rest(job_id: int, seconds: float, kind: str) -> None:
+    """Ghi trạng thái nghỉ để UI đếm ngược; seconds <= 0 là đã hết nghỉ."""
+    try:
+        with get_db() as conn:
+            if seconds and seconds > 0:
+                conn.execute(
+                    """
+                    UPDATE crawl_jobs
+                    SET rest_until=DATE_ADD(NOW(), INTERVAL ? SECOND), rest_kind=?, updated_at=NOW()
+                    WHERE id=? AND status='running'
+                    """,
+                    (int(seconds + 0.999), kind, job_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE crawl_jobs
+                    SET rest_until=NULL, rest_kind=NULL, updated_at=NOW()
+                    WHERE id=? AND status='running'
+                    """,
+                    (job_id,),
+                )
+    except pymysql.err.ProgrammingError as exc:
+        # Cột rest_until/rest_kind chưa tồn tại (backend chưa migrate) — bỏ qua, không chặn job.
+        if not _missing_column(exc):
+            raise
 
 
 def replace_plan(job_id: int, rows: list[dict[str, Any]]) -> None:
