@@ -31,7 +31,7 @@ Crawl may call TTS when `run_tts=True`. Crawl job rules live in the `crawler-wor
 - One active TTS worker at a time. Respect `tts_worker.lock`.
 - Skip chapters that already have a valid MP3, and chapters with no content.
 - `_normalize_tts_text` only strips tags, URLs, control characters, emoji, and known junk. Do not rewrite, summarize, or paraphrase the story.
-- VieNeu packs about 3 sentences per `infer` (`VIENEU_CHUNK_MAX_CHARS`, short lines up to 6) and inserts `VIENEU_CHUNK_PAUSE_MS` between chunks. `_prepare_vieneu_speech` only adjusts pauses and punctuation. Edge-TTS still uses `_split_text_into_chunks` and `TTS_CHUNK_SIZE`.
+- VieNeu packs sentences with quote-aware semantics: a sentence adjacent to quoted dialogue joins the chunk ignoring the sentence cap (char budget `VIENEU_CHUNK_*` stays the hard limit); `VIENEU_CHUNK_PAUSE_MS` (350) is inserted between chunks. `_prepare_vieneu_speech` only adjusts pauses and punctuation. Edge-TTS still uses `_split_text_into_chunks` and `TTS_CHUNK_SIZE`.
 - Chunking and background music need ffmpeg. Without ffmpeg, still write the voice MP3.
 - `use_bgm` passed into a job is a snapshot. Do not re-read `tts_settings.json` mid-job for that flag.
 - Stopping or interrupting resets processing chapters so a later run can resume (`reset_processing_tts_chapters`).
@@ -72,3 +72,4 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-09-27 — Initial map: scopes, engines, worker chain, normalize and resume invariants.
 - 2026-09-27 — VieNeu sentence packing and pause gaps; edge-tts chunk size unchanged.
 - 2026-10-01 — VieNeu runs `VIENEU_BACKEND=torch` via `worker/.env` (RTX GPU, ~8x onnx speed); torch backend needs `transformers` + CUDA torch wheel in `.venv-vieneu`.
+- 2026-10-01 — VieNeu packing now quote-aware (dialogue glue drops the sentence cap, char budget governs); `VIENEU_CHUNK_PAUSE_MS` 250→350. Reference voice `hoaimy.wav` regenerated from edge-tts (26.9s sample).

@@ -181,6 +181,12 @@ def _split_text_into_chunks(text: str, max_size: int = TTS_CHUNK_SIZE) -> list[s
 
 
 _VIENEU_CLOSERS = set("\"“”‘’'»)\]】』」")
+_VIENEU_QUOTES = "\"“”«»"
+
+
+def _has_vieneu_quote(sentence: str) -> bool:
+    """True khi câu chứa dấu ngoặc kép thoại (câu nhân vật nói)."""
+    return any(ch in _VIENEU_QUOTES for ch in sentence)
 _VIENEU_ABBREV_DOT = re.compile(
     r"(?:^|[\s(])(?:v\.v\.?|TS|PGS|GS|ThS|Mr|Mrs|Ms|Dr|St|No|tp)\.$",
     re.IGNORECASE,
@@ -314,6 +320,12 @@ def _split_overflow_sentence(sentence: str) -> list[str]:
 
 
 def _pack_vieneu_sentences(sentences: list[str]) -> list[str]:
+    """Gói câu theo ngữ nghĩa: câu thoại (có ngoặc kép) dính câu kể dẫn/nối.
+
+    Trần ký tự luôn là giới hạn cứng. Khi câu hiện tại hoặc câu trước đó là
+    câu thoại thì bỏ trần số câu (chỉ còn trần ký tự), để cụm dẫn + thoại +
+    nối — kể cả hội thoại liên hoàn — nằm trọn trong một infer.
+    """
     chunks: list[str] = []
     buf: list[str] = []
 
@@ -335,7 +347,11 @@ def _pack_vieneu_sentences(sentences: list[str]) -> list[str]:
             )
             max_chars = VIENEU_CHUNK_SHORT_MAX_CHARS if short else VIENEU_CHUNK_MAX_CHARS
             joined_len = len(" ".join(buf)) + 1 + len(piece)
-            if len(buf) >= max_sentences or joined_len > max_chars:
+            # Keo ngữ nghĩa: câu nói nối với câu dẫn/nối liền kề — bỏ trần số câu.
+            if _has_vieneu_quote(piece) or _has_vieneu_quote(buf[-1]):
+                if joined_len > max_chars:
+                    flush()
+            elif len(buf) >= max_sentences or joined_len > max_chars:
                 flush()
             buf.append(piece)
     flush()
@@ -343,7 +359,7 @@ def _pack_vieneu_sentences(sentences: list[str]) -> list[str]:
 
 
 def _split_vieneu_chunks(text: str) -> list[str]:
-    """Gói 1–3 câu (thoại ngắn tối đa 6) để mỗi infer còn nhịp đọc."""
+    """Gói theo ngữ nghĩa: thoại dính câu dẫn/nối, mỗi infer còn nhịp đọc."""
     chunks: list[str] = []
     for paragraph in re.split(r"\n\s*\n", text):
         sentences: list[str] = []
@@ -514,6 +530,48 @@ def _prepare_bgm_for_voice(voice):
     return bgm
 
 
+def _apply_loudness_norm(path: Path) -> None:
+    """Chuẩn hóa âm lượng chapter theo EBU R128 (podcast/audiobook) — ghi đè cùng path.
+
+    Lỗi chuẩn hóa không được hủy chapter: giữ file gốc nếu ffmpeg/filter lỗi.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return
+    tmp = path.with_suffix(".loudnorm.mp3")
+    try:
+        result = subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-v",
+                "error",
+                "-i",
+                str(path),
+                "-af",
+                "loudnorm=I=-16:TP=-1.5:LRA=11",
+                "-c:a",
+                "libmp3lame",
+                "-b:a",
+                "192k",
+                str(tmp),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if result.returncode == 0 and tmp.is_file() and tmp.stat().st_size > 0:
+            tmp.replace(path)
+        else:
+            tmp.unlink(missing_ok=True)
+            tail = (result.stderr or "").strip()[-300:]
+            log_message(f"Lưu ý: không chuẩn hóa âm lượng ({tail or 'không rõ lỗi'}) — giữ file gốc.")
+    except Exception as exc:
+        tmp.unlink(missing_ok=True)
+        log_message(f"Lưu ý: không chuẩn hóa âm lượng ({exc}) — giữ file gốc.")
+
+
 def _mix_background_music_or_skip(voice_path: Path, *, quiet: bool = False) -> None:
     """Trộn nhạc nền nếu ffmpeg chạy được. Lỗi nhạc nền không được hủy file giọng."""
     if not _ffmpeg_on_path():
@@ -546,6 +604,38 @@ def _mix_background_music(voice_path: Path) -> None:
     )
 
 
+def _room_tone_gap(duration_ms: int, *, frame_rate: int, channels: int) -> AudioSegment | None:
+    """Khoảng nghỉ có noise floor rất nhỏ (~-58 dBFS) thay im lặng kỹ thuật số.
+
+    Im lặng tuyệt đối nghe "khô" giữa hai câu; room tone nhẹ giữ cảm giác
+    không gian liên tục. Trả None nếu tạo không được (dùng silent thay thế).
+    """
+    try:
+        import array
+        import random
+
+        from pydub import AudioSegment
+
+        if channels < 1 or channels > 2:
+            return None
+        sample_width = 2  # s16; chunk mp3 decode ra luôn là 16-bit
+        samples = int(frame_rate * duration_ms / 1000) * channels
+        amp = 42  # 16-bit full scale 32767 → ~-58 dBFS
+        buf = array.array("h", bytes(sample_width * samples))
+        for i in range(samples):
+            buf[i] = random.randint(-amp, amp)
+        seg = AudioSegment(
+            data=buf.tobytes(),
+            sample_width=sample_width,
+            frame_rate=frame_rate,
+            channels=channels,
+        )
+        return seg.fade_in(10).fade_out(10)
+    except Exception as exc:
+        log_message(f"Lưu ý: không tạo room tone ({exc}) — dùng im lặng thường.")
+        return None
+
+
 def _merge_mp3_files(
     chunk_paths: list[Path],
     output_path: Path,
@@ -557,13 +647,25 @@ def _merge_mp3_files(
         try:
             from pydub import AudioSegment
 
-            gap = AudioSegment.silent(duration=gap_ms) if gap_ms > 0 else None
             combined = AudioSegment.empty()
+            gap: AudioSegment | None = None
             for path in chunk_paths:
+                seg = AudioSegment.from_mp3(str(path))
+                if gap_ms > 0 and gap is None:
+                    # Khoảng nghỉ khớp định dạng chunk đầu tiên; room tone
+                    # thay im lặng kỹ thuật số để nhịp nghỉ không bị "khô".
+                    gap = _room_tone_gap(
+                        gap_ms,
+                        frame_rate=seg.frame_rate,
+                        channels=seg.channels,
+                    ) or AudioSegment.silent(duration=gap_ms, frame_rate=seg.frame_rate)
                 if len(combined) > 0 and gap is not None:
                     combined += gap
-                combined += AudioSegment.from_mp3(str(path))
-            combined.export(str(output_path), format="mp3")
+                # Fade 2 đầu mỗi chunk để mối nối không phát tiếng "cạch"
+                # do biên độ không về 0 tại biên file.
+                seg = seg.fade_in(15).fade_out(25)
+                combined += seg
+            combined.export(str(output_path), format="mp3", bitrate="192k")
             return
         except Exception as exc:
             log_message(f"Ghép MP3 bằng ffmpeg lỗi ({exc}) — nối byte.")
@@ -762,6 +864,8 @@ async def _tts_chapter(
             )
             if use_bgm:
                 _mix_background_music_or_skip(output_path, quiet=quiet)
+            # Chuẩn hóa âm lượng sau BGM để mọi chương (có/không nhạc) cùng mức nghe.
+            _apply_loudness_norm(output_path)
             if not output_path.is_file() or output_path.stat().st_size <= 0:
                 raise RuntimeError(f"Không tạo được file MP3: {output_path}")
             update_chapter_mp3(ch.id, str(output_path))

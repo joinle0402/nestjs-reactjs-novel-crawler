@@ -118,7 +118,7 @@ def _wav_to_mp3(wav_path: Path, output_path: Path) -> None:
             "-codec:a",
             "libmp3lame",
             "-b:a",
-            "128k",
+            "192k",
             str(output_path),
         ],
         capture_output=True,
