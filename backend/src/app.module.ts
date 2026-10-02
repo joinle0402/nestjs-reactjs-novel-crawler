@@ -16,6 +16,8 @@ import { TtsJob } from './tts/entities/tts-job.entity';
 import { CrawlModule } from './crawl/crawl.module';
 import { CrawlJob } from './crawl/entities/crawl-job.entity';
 import { CrawlJobChapter } from './crawl/entities/crawl-job-chapter.entity';
+import { DriveModule } from './drive/drive.module';
+import { DriveUploadJob } from './drive/entities/drive-upload-job.entity';
 
 @Module({
     imports: [
@@ -37,7 +39,7 @@ import { CrawlJobChapter } from './crawl/entities/crawl-job-chapter.entity';
                     password: configService.get<string>('DB_PASSWORD'),
                     database: configService.get<string>('DB_DATABASE'),
                     charset: 'utf8mb4',
-                    entities: [Novel, Chapter, PlaybackState, TtsJob, CrawlJob, CrawlJobChapter],
+                    entities: [Novel, Chapter, PlaybackState, TtsJob, CrawlJob, CrawlJobChapter, DriveUploadJob],
                     synchronize: true,
                     logging: isDev,
                     logger: isDev ? new SqlQueryLogger() : undefined,
@@ -53,6 +55,7 @@ import { CrawlJobChapter } from './crawl/entities/crawl-job-chapter.entity';
         AudiosModule,
         TtsModule,
         CrawlModule,
+        DriveModule,
     ],
     controllers: [AppController],
     providers: [AppService],

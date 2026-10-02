@@ -8,6 +8,8 @@ import { isActiveTtsJob } from '@/features/tts/api/ttsApi.ts';
 import { useTtsJobWatch } from '@/features/tts/hooks/useTtsQueries.ts';
 import { isActiveCrawlJob } from '@/features/crawl/api/crawlApi.ts';
 import { useCrawlJobWatch } from '@/features/crawl/hooks/useCrawlQueries.ts';
+import { isActiveDriveJob } from '@/features/drive/api/driveApi.ts';
+import { useDriveJobWatch } from '@/features/drive/hooks/useDriveQueries.ts';
 
 const { Sider, Content } = Layout;
 
@@ -20,6 +22,8 @@ export function MainLayout() {
     const jobActive = isActiveTtsJob(jobQuery.data);
     const crawlQuery = useCrawlJobWatch();
     const crawlActive = isActiveCrawlJob(crawlQuery.data);
+    const driveQuery = useDriveJobWatch();
+    const driveActive = isActiveDriveJob(driveQuery.data);
 
     const isHome = location.pathname === '/';
     const selectedKeys = location.pathname.startsWith('/settings')
@@ -138,7 +142,7 @@ export function MainLayout() {
 
             <Layout>
                 <Content
-                    className={track ? 'layout-with-player' : jobActive || crawlActive ? 'layout-with-tts' : undefined}
+                    className={track ? 'layout-with-player' : jobActive || crawlActive || driveActive ? 'layout-with-tts' : undefined}
                     style={{ padding: 16, background: '#f5f5f5', minHeight: '100vh' }}
                 >
                     <Outlet />

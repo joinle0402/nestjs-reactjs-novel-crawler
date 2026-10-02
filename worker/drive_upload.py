@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,10 +28,11 @@ def _q_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def _get_service():
+def _get_service(interactive: bool = True):
+    """Tạo Drive service. interactive=False chỉ dùng token có sẵn, không mở trình duyệt."""
+    from google.auth.exceptions import RefreshError
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
-    from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
 
     creds_path = Path(GDRIVE_CREDENTIALS)
@@ -43,17 +45,63 @@ def _get_service():
     token_path = Path(GDRIVE_TOKEN)
     creds = None
     if token_path.is_file():
-        creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
+        except Exception:
+            creds = None  # token.json hỏng -> coi như chưa đăng nhập
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except RefreshError as exc:
+                # Refresh token hết hạn / bị thu hồi (invalid_grant): xoá token
+                # cũ; nếu interactive thì đăng nhập lại, không thì báo lỗi rõ ràng.
+                token_path.unlink(missing_ok=True)
+                creds = None
+                if not interactive:
+                    raise RuntimeError(
+                        "Token Google Drive đã hết hạn hoặc bị thu hồi (invalid_grant). "
+                        "Đăng nhập lại bằng lệnh: python worker/drive_upload.py"
+                    ) from exc
+        if creds is None:
+            if not interactive:
+                raise RuntimeError("Chưa đăng nhập Google Drive (không có token.json hợp lệ)")
+            from google_auth_oauthlib.flow import InstalledAppFlow
+
             flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), SCOPES)
             creds = flow.run_local_server(port=0)
         token_path.write_text(creds.to_json(), encoding="utf-8")
 
     return build("drive", "v3", credentials=creds)
+
+
+def login() -> None:
+    """Đăng nhập Google Drive tương tác (mở browser) và lưu lại token.json."""
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
+    creds_path = Path(GDRIVE_CREDENTIALS)
+    if not creds_path.is_file():
+        raise FileNotFoundError(
+            f"Không tìm thấy file OAuth: {creds_path}. "
+            "Tải credentials Desktop app từ Google Cloud Console."
+        )
+    flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), SCOPES)
+    creds = flow.run_local_server(port=0)
+    Path(GDRIVE_TOKEN).write_text(creds.to_json(), encoding="utf-8")
+    print(f"[Drive] Đã lưu token mới: {GDRIVE_TOKEN}", flush=True)
+
+
+if __name__ == "__main__":
+    if sys.platform == "win32":
+        for name in ("stdout", "stderr"):
+            stream = getattr(sys, name, None)
+            if stream and hasattr(stream, "reconfigure"):
+                try:
+                    stream.reconfigure(encoding="utf-8", errors="replace")
+                except Exception:
+                    pass
+    login()
 
 
 def _find_or_create_folder(service, name: str, parent_id: str | None = None) -> str:
@@ -79,17 +127,26 @@ def _find_or_create_folder(service, name: str, parent_id: str | None = None) -> 
     return service.files().create(body=meta, fields="id").execute()["id"]
 
 
-def _file_exists_in_folder(service, filename: str, parent_id: str) -> bool:
-    q = (
-        f"name='{_q_escape(filename)}' and "
-        f"'{parent_id}' in parents and trashed=false"
-    )
-    res = (
-        service.files()
-        .list(q=q, fields="files(id)", spaces="drive")
-        .execute()
-    )
-    return bool(res.get("files"))
+def _existing_names_in_folder(service, parent_id: str) -> set[str]:
+    """Tên các file hiện có trong thư mục Drive (1 list phân trang thay vì query từng file)."""
+    names: set[str] = set()
+    page_token: str | None = None
+    while True:
+        res = (
+            service.files()
+            .list(
+                q=f"'{parent_id}' in parents and trashed=false",
+                fields="nextPageToken, files(name)",
+                pageSize=1000,
+                pageToken=page_token,
+                spaces="drive",
+            )
+            .execute()
+        )
+        names.update(file["name"] for file in res.get("files", []))
+        page_token = res.get("nextPageToken")
+        if not page_token:
+            return names
 
 
 def _chapter_number_from_mp3(path: Path) -> int | None:
@@ -119,28 +176,53 @@ def upload_mp3_files(
     novel_folder_name: str,
     root_folder_name: str | None = None,
     skip_existing: bool = True,
+    interactive: bool = True,
+    progress=None,
 ) -> UploadResult:
-    """Upload danh sách file MP3 lên Drive/novel-crawler-mp3/{novel_folder_name}/."""
+    """Upload danh sách file MP3 lên Drive/novel-crawler-mp3/{novel_folder_name}/.
+
+    progress: callback tuỳ chọn, nhận dict
+    {"uploaded", "skipped", "failed", "total", "current", "last_error"}.
+    """
     if not mp3_files:
         raise FileNotFoundError("Không có file MP3 nào để upload.")
 
     from googleapiclient.http import MediaFileUpload
 
-    service = _get_service()
+    service = _get_service(interactive=interactive)
     root_name = root_folder_name or GDRIVE_ROOT_FOLDER
     root_id = _find_or_create_folder(service, root_name)
     novel_folder_id = _find_or_create_folder(service, novel_folder_name, root_id)
+    existing = _existing_names_in_folder(service, novel_folder_id) if skip_existing else set()
 
     uploaded: list[str] = []
     skipped: list[str] = []
     failed: list[tuple[str, str]] = []
+    total = len(mp3_files)
+
+    def _report(current: str | None = None, last_error: str | None = None) -> None:
+        if progress:
+            progress(
+                {
+                    "uploaded": len(uploaded),
+                    "skipped": len(skipped),
+                    "failed": len(failed),
+                    "total": total,
+                    "current": current,
+                    "last_error": last_error,
+                }
+            )
 
     print(f"[Drive] Thư mục đích: {root_name}/{novel_folder_name}", flush=True)
+    print(f"[Drive] Đã có trên Drive: {len(existing)} file", flush=True)
+    _report(None)
 
     for mp3 in sorted(mp3_files):
-        if skip_existing and _file_exists_in_folder(service, mp3.name, novel_folder_id):
+        _report(mp3.name)
+        if skip_existing and mp3.name in existing:
             skipped.append(mp3.name)
             print(f"[Drive] Bỏ qua (đã có): {mp3.name}", flush=True)
+            _report(mp3.name)
             continue
 
         try:
@@ -156,6 +238,7 @@ def upload_mp3_files(
         except Exception as exc:
             failed.append((mp3.name, str(exc)))
             print(f"[Drive] Lỗi {mp3.name}: {exc}", flush=True)
+        _report(mp3.name, failed[-1][1] if failed and failed[-1][0] == mp3.name else None)
 
     print(
         f"[Drive] Xong: {len(uploaded)} upload, "

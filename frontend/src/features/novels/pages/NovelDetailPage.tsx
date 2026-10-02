@@ -15,7 +15,7 @@ import {
     message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { CaretRightOutlined, CloudDownloadOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
+import { CaretRightOutlined, CloudDownloadOutlined, CloudUploadOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
@@ -40,6 +40,10 @@ import { useCurrentTtsJobQuery, useTtsPreviewQuery } from '@/features/tts/hooks/
 import { formatChapterRangeInput } from '@/features/tts/lib/chapterRange.ts';
 import { isActiveCrawlJob } from '@/features/crawl/api/crawlApi.ts';
 import { useCreateCrawlJobMutation, useCurrentCrawlJobQuery } from '@/features/crawl/hooks/useCrawlQueries.ts';
+import { isActiveDriveJob } from '@/features/drive/api/driveApi.ts';
+import { UploadDriveModal, type DriveRunRequest } from '@/features/drive/components/UploadDriveModal.tsx';
+import { DriveLogDrawer } from '@/features/drive/components/DriveLogDrawer.tsx';
+import { useCurrentDriveJobQuery, useStopDriveJobMutation } from '@/features/drive/hooks/useDriveQueries.ts';
 
 const PAGE_SIZE = 12;
 
@@ -70,11 +74,17 @@ export function NovelDetailPage() {
     const [editing, setEditing] = useState<ChapterListItem | null>(null);
     const [selectedChapters, setSelectedChapters] = useState<Map<number, number>>(new Map());
     const [runRequest, setRunRequest] = useState<TtsRunRequest | null>(null);
+    const [driveRequest, setDriveRequest] = useState<DriveRunRequest | null>(null);
+    const [driveLogOpen, setDriveLogOpen] = useState(false);
 
     const createMutation = useCreateChapterMutation();
     const crawlMutation = useCreateCrawlJobMutation();
     const crawlQuery = useCurrentCrawlJobQuery();
     const crawlActive = isActiveCrawlJob(crawlQuery.data);
+    const driveQuery = useCurrentDriveJobQuery();
+    const driveActive = isActiveDriveJob(driveQuery.data);
+    const driveHere = driveActive && driveQuery.data?.novelId === novelId;
+    const stopDriveMutation = useStopDriveJobMutation();
     const updateMutation = useUpdateChapterMutation();
     const deleteMutation = useDeleteChapterMutation();
 
@@ -107,6 +117,8 @@ export function NovelDetailPage() {
     useEffect(() => {
         setSelectedChapters(new Map());
         setRunRequest(null);
+        setDriveRequest(null);
+        setDriveLogOpen(false);
     }, [novelId]);
 
     const updateFilters = (patch: Record<string, string | undefined>) => {
@@ -355,6 +367,20 @@ export function NovelDetailPage() {
                             </Button>
                         ) : null}
                         <Button
+                            icon={<CloudUploadOutlined />}
+                            disabled={driveActive}
+                            title={driveActive ? 'Đang có job upload Drive' : 'Upload MP3 lên Google Drive'}
+                            onClick={() =>
+                                setDriveRequest(
+                                    selectedNumbers.length > 0
+                                        ? { scope: 'chapters', chapterRange: formatChapterRangeInput(selectedNumbers) }
+                                        : { scope: 'missing', chapterRange: '' },
+                                )
+                            }
+                        >
+                            Upload Drive
+                        </Button>
+                        <Button
                             icon={<CloudDownloadOutlined />}
                             loading={crawlMutation.isPending}
                             disabled={crawlActive}
@@ -416,6 +442,24 @@ export function NovelDetailPage() {
                 {jobHere && jobQuery.data ? (
                     <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
                         {jobQuery.data.progress.detail}
+                    </Typography.Paragraph>
+                ) : null}
+
+                {driveHere && driveQuery.data ? (
+                    <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+                        {driveQuery.data.progress.detail}{' '}
+                        <Typography.Link onClick={() => setDriveLogOpen(true)}>Xem log</Typography.Link>
+                        {' · '}
+                        <Typography.Link
+                            onClick={() =>
+                                stopDriveMutation.mutate(undefined, {
+                                    onSuccess: () => message.success('Đã yêu cầu dừng upload Drive'),
+                                    onError: (error) => message.error(getErrorMessage(error, 'Không dừng được upload Drive')),
+                                })
+                            }
+                        >
+                            Dừng upload
+                        </Typography.Link>
                     </Typography.Paragraph>
                 ) : null}
 
@@ -482,6 +526,16 @@ export function NovelDetailPage() {
                 request={runRequest}
                 onClose={() => setRunRequest(null)}
             />
+
+            <UploadDriveModal
+                key={driveRequest ? `${driveRequest.scope}:${driveRequest.chapterRange}` : 'drive-run'}
+                open={driveRequest !== null}
+                novelId={novelId}
+                request={driveRequest}
+                onClose={() => setDriveRequest(null)}
+            />
+
+            <DriveLogDrawer open={driveLogOpen} title={novel.title} onClose={() => setDriveLogOpen(false)} />
 
             <ChapterFormModal
                 open={formOpen}

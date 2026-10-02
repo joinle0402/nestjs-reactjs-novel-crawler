@@ -1,0 +1,222 @@
+"""Worker nền: nhận drive_upload_jobs pending/running và spawn drive_upload_runner.
+
+Chỉ một process giữ lock. Restart vẫn đọc job từ DB.
+JobManager trong console không được dùng làm kho job của web.
+"""
+
+from __future__ import annotations
+
+import os
+import signal
+import subprocess
+import sys
+import time
+import traceback
+from pathlib import Path
+
+WORKER_DIR = Path(__file__).resolve().parent
+if str(WORKER_DIR) not in sys.path:
+    sys.path.insert(0, str(WORKER_DIR))
+
+from drive_jobs import fetch_active_job, fetch_job, mark_if_running
+from log_utils import log_message
+
+LOCK_PATH = WORKER_DIR / "drive_worker.lock"
+PID_PATH = WORKER_DIR / "drive_runner.pid"
+RUNNER_PATH = WORKER_DIR / "drive_upload_runner.py"
+_lock_handle = None
+
+
+def _configure_stdio() -> None:
+    if sys.platform != "win32":
+        return
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None or not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def acquire_lock() -> bool:
+    global _lock_handle
+    LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _lock_handle = open(LOCK_PATH, "a+b")
+    if _lock_handle.seek(0, os.SEEK_END) == 0:
+        _lock_handle.write(b"\0")
+        _lock_handle.flush()
+    _lock_handle.seek(0)
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            msvcrt.locking(_lock_handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(_lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
+def read_runner_pid() -> int | None:
+    try:
+        pid = int(PID_PATH.read_text(encoding="utf-8").strip())
+        if not pid_alive(pid):
+            PID_PATH.unlink(missing_ok=True)
+            return None
+        return pid
+    except (OSError, ValueError):
+        return None
+
+
+def pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong()
+            if ctypes.windll.kernel32.GetExitCodeProcess(ctypes.c_void_p(handle), ctypes.byref(exit_code)):
+                STILL_ACTIVE = 259
+                return exit_code.value == STILL_ACTIVE
+            return False
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def spawn_runner(job_id: int) -> subprocess.Popen:
+    command = [sys.executable, "-u", str(RUNNER_PATH), str(job_id)]
+    kwargs: dict = {"cwd": str(WORKER_DIR)}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    return subprocess.Popen(command, **kwargs)
+
+
+def _interrupt_proc(proc: subprocess.Popen) -> None:
+    if proc.poll() is not None:
+        return
+    try:
+        if sys.platform == "win32":
+            proc.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            proc.send_signal(signal.SIGINT)
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=8)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+def _interrupt_pid(pid: int) -> None:
+    if not pid_alive(pid):
+        return
+    if sys.platform == "win32":
+        try:
+            subprocess.run(["taskkill", "/PID", str(pid), "/T"], capture_output=True)
+        except Exception:
+            pass
+    else:
+        try:
+            os.kill(pid, signal.SIGINT)
+        except OSError:
+            pass
+    for _ in range(16):
+        if not pid_alive(pid):
+            return
+        time.sleep(0.5)
+    if sys.platform == "win32":
+        try:
+            subprocess.run(["taskkill", "/F", "/PID", str(pid), "/T"], capture_output=True)
+        except Exception:
+            pass
+    else:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+
+
+def _after_exit(job_id: int) -> None:
+    job = fetch_job(job_id)
+    if job and job["status"] == "running":
+        mark_if_running(job_id, "failed", "Drive worker dừng giữa chừng")
+
+
+def monitor_proc(proc: subprocess.Popen, job_id: int) -> None:
+    while proc.poll() is None:
+        job = fetch_job(job_id)
+        if job and job["status"] == "stopped":
+            _interrupt_proc(proc)
+            return
+        time.sleep(0.4)
+    _after_exit(job_id)
+
+
+def monitor_pid(pid: int, job_id: int) -> None:
+    while pid_alive(pid):
+        job = fetch_job(job_id)
+        if job and job["status"] == "stopped":
+            _interrupt_pid(pid)
+            return
+        time.sleep(0.4)
+    _after_exit(job_id)
+
+
+def tick() -> None:
+    job = fetch_active_job()
+    if not job:
+        time.sleep(0.5)
+        return
+    job_id = int(job["id"])
+    pid = read_runner_pid()
+    if pid and pid_alive(pid):
+        log_message(f"[Drive worker] gắn vào runner pid={pid} job={job_id}")
+        monitor_pid(pid, job_id)
+        return
+    log_message(f"[Drive worker] chạy job={job_id} novel={job['novel_id']} status={job['status']}")
+    proc = spawn_runner(job_id)
+    monitor_proc(proc, job_id)
+
+
+def main() -> None:
+    _configure_stdio()
+    if not acquire_lock():
+        log_message("[Drive worker] process khác đang chạy, thoát.")
+        return
+    log_message("[Drive worker] đang chờ job.")
+    while True:
+        try:
+            tick()
+        except KeyboardInterrupt:
+            log_message("[Drive worker] dừng.")
+            return
+        except Exception:
+            traceback.print_exc()
+            time.sleep(2)
+
+
+if __name__ == "__main__":
+    main()

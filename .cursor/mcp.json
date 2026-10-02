@@ -3,6 +3,10 @@
         "codebase-memory-mcp": {
             "command": "C:/Users/ASUS/AppData/Local/Programs/codebase-memory-mcp/codebase-memory-mcp.exe",
             "args": []
+        },
+        "context-mode": {
+            "command": "cmd",
+            "args": ["/c", "npx", "-y", "context-mode"]
         }
     }
 }

@@ -1,0 +1,43 @@
+---
+description: Route discovery between Codebase Memory MCP and context-mode MCP
+alwaysApply: true
+---
+
+# MCP Routing: Codebase Memory (primary) + context-mode (large output)
+
+## Role split
+
+- **Codebase Memory MCP** (`user-codebase-memory-mcp`): PRIMARY for all codebase
+  discovery — symbols, callers/callees, routes, architecture, code search.
+  Follow `.cursor/rules/use-codebase-memory.mdc` unchanged.
+- **context-mode MCP** (`context-mode`): ONLY for keeping LARGE raw output out of
+  the context window. Do NOT use it for codebase discovery, symbol lookup, or
+  structural queries — that stays with Codebase Memory.
+
+## When to use context-mode
+
+Route these through context-mode sandbox tools instead of raw shell/Read/WebFetch
+when output is expected to be large:
+
+| Task | Tool |
+| --- | --- |
+| Multiple shell commands (build, test, install logs) | `ctx_batch_execute` |
+| One long-running/verbose command | `ctx_execute` |
+| Index an existing large log/output file for search | `ctx_index` |
+| Search previously indexed output | `ctx_search` |
+| Fetch + index a web page / API response | `ctx_fetch_and_index` |
+
+Rules:
+- Prefer `ctx_batch_execute` over chaining several raw `Shell` calls when each
+  produces more than a screenful of output.
+- Use `ctx_stats` / `ctx_doctor` to verify the server is healthy; do not spam them.
+- Small, targeted outputs (git status, ls, a single test result) stay on normal
+  `Shell` — do not over-route.
+
+## Security
+
+- NEVER index, search for, or print values of secrets/`.env` content
+  (`HF_TOKEN`, API keys, DB credentials). Follow
+  `.cursor/rules/env-security-and-tokens.mdc`. Anything run through
+  `ctx_*` tools is persisted to a local SQLite index — treat that as a reason
+  to keep secrets out of it, not a place to dump them.

@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, writeFil
 import path from 'path';
 import { resolveWorkerDir } from './tts-settings.service';
 
-type PythonLaunch = { command: string; prefix: string[] };
+export type PythonLaunch = { command: string; prefix: string[] };
 
 function workerLogLine(message: string): string {
     const now = new Date();
