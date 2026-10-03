@@ -44,4 +44,10 @@ export class ListChaptersQuery {
     @IsBoolean()
     @ApiPropertyOptional({ description: 'Lọc chương đã có mp3_path' })
     hasMp3?: boolean;
+
+    @IsOptional()
+    @Transform(({ value }) => toOptionalBoolean(value))
+    @IsBoolean()
+    @ApiPropertyOptional({ description: 'Lọc chương đã upload lên Drive (true) hoặc chưa (false)' })
+    onDrive?: boolean;
 }

@@ -182,7 +182,8 @@ def upload_mp3_files(
     """Upload danh sách file MP3 lên Drive/novel-crawler-mp3/{novel_folder_name}/.
 
     progress: callback tuỳ chọn, nhận dict
-    {"uploaded", "skipped", "failed", "total", "current", "last_error"}.
+    {"uploaded", "skipped", "failed", "total", "current", "last_error",
+     "uploaded_names", "skipped_names"}.
     """
     if not mp3_files:
         raise FileNotFoundError("Không có file MP3 nào để upload.")
@@ -196,6 +197,7 @@ def upload_mp3_files(
     existing = _existing_names_in_folder(service, novel_folder_id) if skip_existing else set()
 
     uploaded: list[str] = []
+    uploaded_names: list[str] = []
     skipped: list[str] = []
     failed: list[tuple[str, str]] = []
     total = len(mp3_files)
@@ -210,6 +212,8 @@ def upload_mp3_files(
                     "total": total,
                     "current": current,
                     "last_error": last_error,
+                    "uploaded_names": list(uploaded_names),
+                    "skipped_names": list(skipped),
                 }
             )
 
@@ -234,6 +238,7 @@ def upload_mp3_files(
                 .execute()
             )
             uploaded.append(created["id"])
+            uploaded_names.append(mp3.name)
             print(f"[Drive] Đã upload: {mp3.name}", flush=True)
         except Exception as exc:
             failed.append((mp3.name, str(exc)))

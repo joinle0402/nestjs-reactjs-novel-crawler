@@ -15,6 +15,9 @@ import { useCurrentTtsJobQuery } from '@/features/tts/hooks/useTtsQueries.ts';
 import { isActiveCrawlJob } from '@/features/crawl/api/crawlApi.ts';
 import { CrawlJobLine } from '@/features/crawl/components/CrawlJobLine.tsx';
 import { useCurrentCrawlJobQuery } from '@/features/crawl/hooks/useCrawlQueries.ts';
+import { isActiveDriveJob } from '@/features/drive/api/driveApi.ts';
+import { DriveJobLine } from '@/features/drive/components/DriveJobLine.tsx';
+import { useCurrentDriveJobQuery } from '@/features/drive/hooks/useDriveQueries.ts';
 
 function formatTime(seconds: number): string {
     if (!Number.isFinite(seconds) || seconds < 0) {
@@ -51,8 +54,11 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
     const crawlQuery = useCurrentCrawlJobQuery();
     const crawlJob = crawlQuery.data;
     const crawlActive = isActiveCrawlJob(crawlJob);
+    const driveQuery = useCurrentDriveJobQuery();
+    const driveJob = driveQuery.data;
+    const driveActive = isActiveDriveJob(driveJob);
 
-    if (!track && !jobActive && !crawlActive) {
+    if (!track && !jobActive && !crawlActive && !driveActive) {
         return null;
     }
 
@@ -61,11 +67,12 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
 
     return (
         <div
-            className={track ? `bottom-player${jobActive || crawlActive ? ' bottom-player--with-job' : ''}` : 'bottom-player bottom-player--tts-only'}
+            className={track ? `bottom-player${jobActive || crawlActive || driveActive ? ' bottom-player--with-job' : ''}` : 'bottom-player bottom-player--tts-only'}
             role="region"
             aria-label={track ? 'Trình nghe truyện' : 'Tiến độ tác vụ'}
             style={{ left: siderWidth }}
         >
+            {driveActive && driveJob ? <DriveJobLine job={driveJob} /> : null}
             {crawlActive && crawlJob ? <CrawlJobLine job={crawlJob} /> : null}
             {jobActive && job ? <TtsJobLine job={job} /> : null}
             {track ? (

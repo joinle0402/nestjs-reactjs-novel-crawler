@@ -39,6 +39,7 @@ def main() -> None:
                 {
                     "ok": True,
                     "folder_path": f"{GDRIVE_ROOT_FOLDER}/{folder_name}",
+                    "folder_id": folder_id,
                     "existing": existing,
                 },
                 ensure_ascii=False,

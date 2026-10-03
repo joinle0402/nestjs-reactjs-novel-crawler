@@ -13,6 +13,13 @@ export type DriveFailedFile = {
     error: string;
 };
 
+export type DriveFileResult = {
+    chapterNumber: number;
+    name: string;
+    status: 'uploaded' | 'skipped' | 'failed';
+    error?: string;
+};
+
 @Entity('drive_upload_jobs')
 @Index('idx_drive_upload_jobs_status', ['status'])
 export class DriveUploadJob {
@@ -55,6 +62,9 @@ export class DriveUploadJob {
 
     @Column({ name: 'failed_files', type: 'json', nullable: true })
     failedFiles!: DriveFailedFile[] | null;
+
+    @Column({ name: 'file_results', type: 'json', nullable: true })
+    fileResults!: DriveFileResult[] | null;
 
     @Column({ name: 'started_at', type: 'datetime', nullable: true })
     startedAt!: Date | null;

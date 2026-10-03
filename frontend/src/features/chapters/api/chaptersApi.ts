@@ -60,6 +60,7 @@ export type ListChaptersParams = {
     crawlStatus?: JobStatus;
     ttsStatus?: JobStatus;
     hasMp3?: boolean;
+    onDrive?: boolean;
 };
 
 export type CreateChapterBody = {

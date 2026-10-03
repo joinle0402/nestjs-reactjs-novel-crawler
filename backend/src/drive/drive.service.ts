@@ -21,12 +21,13 @@ import { StartDriveJobRequest } from './dtos/requests/start-drive-job.request';
 import { DriveJobProgress, DriveJobResponse } from './dtos/responses/drive-job.response';
 import { DriveChaptersPreview, DrivePreviewResponse } from './dtos/responses/drive-preview.response';
 import { DriveStatusResponse } from './dtos/responses/drive-status.response';
-import { DriveUploadJob, type DriveFailedFile } from './entities/drive-upload-job.entity';
+import { DriveUploadJob, type DriveFailedFile, type DriveFileResult } from './entities/drive-upload-job.entity';
 
 const execFileAsync = promisify(execFile);
 const DRIVE_JOB_LOCK = 'novel_crawler_drive_job';
 const RECENT_JOB_MS = 20_000;
 const DRIVE_CHECK_TIMEOUT_MS = 120_000;
+const DRIVE_CHECK_CACHE_TTL_MS = 30_000;
 
 type DriveConfig = { credentials: string; token: string; rootFolder: string };
 
@@ -39,6 +40,7 @@ type Mp3Fact = {
 type DriveCheckResult = {
     checked: boolean;
     folderPath: string | null;
+    folderId: string | null;
     existing: Set<string> | null;
 };
 
@@ -81,6 +83,7 @@ function readDriveConfig(workerDir: string): DriveConfig {
 export class DriveService {
     private pythonLaunch: PythonLaunch | null = null;
     private driveConfig: DriveConfig | null = null;
+    private checkCache = new Map<number, { at: number; result: DriveCheckResult }>();
 
     constructor(
         @InjectRepository(DriveUploadJob)
@@ -116,8 +119,21 @@ export class DriveService {
             missingBytes: missingFacts ? missingFacts.reduce((sum, fact) => sum + fact.sizeBytes, 0) : null,
             driveChecked: check.checked,
             driveFolder: check.folderPath,
+            driveFolderId: check.folderId,
+            existingNames: check.existing ? [...check.existing].sort() : null,
             chapters,
         };
+    }
+
+    /** Danh sách số chương có MP3 đã nằm trên Drive. Null khi chưa kiểm tra được Drive. */
+    async getOnDriveChapterNumbers(novelId: number): Promise<number[] | null> {
+        const novel = await this.novelsService.findOne(novelId);
+        const check = await this.runDriveCheck(novel.id);
+        if (!check.checked || !check.existing) {
+            return null;
+        }
+        const facts = await this.loadFacts(novel.id);
+        return facts.filter((fact) => check.existing!.has(fact.fileName)).map((fact) => fact.chapterNumber);
     }
 
     async start(request: StartDriveJobRequest): Promise<DriveJobResponse> {
@@ -341,6 +357,7 @@ export class DriveService {
             errorMessage: job.errorMessage,
             progress: this.progress(job),
             failedFiles: this.failedFilesOf(job),
+            fileResults: this.fileResultsOf(job),
         };
     }
 
@@ -417,6 +434,32 @@ export class DriveService {
             .filter((item) => item.name.length > 0);
     }
 
+    private fileResultsOf(job: DriveUploadJob): DriveFileResult[] {
+        const value = job.fileResults as unknown;
+        if (typeof value === 'string') {
+            try {
+                return this.fileResultsOf({ ...job, fileResults: JSON.parse(value) as DriveFileResult[] });
+            } catch {
+                return [];
+            }
+        }
+        if (!Array.isArray(value)) {
+            return [];
+        }
+        return value
+            .filter((item): item is DriveFileResult => Boolean(item) && typeof item === 'object')
+            .map((item) => ({
+                chapterNumber: Number(item.chapterNumber) || 0,
+                name: String(item.name ?? ''),
+                status:
+                    item.status === 'uploaded' || item.status === 'skipped' || item.status === 'failed'
+                        ? item.status
+                        : 'failed',
+                error: item.error ? String(item.error) : undefined,
+            }))
+            .filter((item) => item.name.length > 0);
+    }
+
     private readConfig(): DriveConfig {
         if (!this.driveConfig) {
             this.driveConfig = readDriveConfig(resolveWorkerDir());
@@ -424,12 +467,22 @@ export class DriveService {
         return this.driveConfig;
     }
 
-    /** Gọi worker/drive_check.py để liệt kê file đã có trên Drive (không tương tác). */
+    /** Gọi worker/drive_check.py để liệt kê file đã có trên Drive (không tương tác). Kết quả cache TTL ngắn. */
     private async runDriveCheck(novelId: number): Promise<DriveCheckResult> {
+        const cached = this.checkCache.get(novelId);
+        if (cached && Date.now() - cached.at < DRIVE_CHECK_CACHE_TTL_MS) {
+            return cached.result;
+        }
+        const result = await this.doRunDriveCheck(novelId);
+        this.checkCache.set(novelId, { at: Date.now(), result });
+        return result;
+    }
+
+    private async doRunDriveCheck(novelId: number): Promise<DriveCheckResult> {
         const workerDir = resolveWorkerDir();
         const script = path.join(workerDir, 'drive_check.py');
         if (!existsSync(script)) {
-            return { checked: false, folderPath: null, existing: null };
+            return { checked: false, folderPath: null, folderId: null, existing: null };
         }
         if (!this.pythonLaunch) {
             this.pythonLaunch = resolvePythonLaunch();
@@ -452,23 +505,25 @@ export class DriveService {
                 .filter((value) => value.startsWith('{'))
                 .pop();
             if (!line) {
-                return { checked: false, folderPath: null, existing: null };
+                return { checked: false, folderPath: null, folderId: null, existing: null };
             }
             const parsed = JSON.parse(line!) as {
                 ok?: boolean;
                 folder_path?: string;
+                folder_id?: string;
                 existing?: string[];
             };
             if (!parsed.ok) {
-                return { checked: false, folderPath: null, existing: null };
+                return { checked: false, folderPath: null, folderId: null, existing: null };
             }
             return {
                 checked: true,
                 folderPath: parsed.folder_path ?? null,
+                folderId: parsed.folder_id ?? null,
                 existing: new Set(parsed.existing ?? []),
             };
         } catch {
-            return { checked: false, folderPath: null, existing: null };
+            return { checked: false, folderPath: null, folderId: null, existing: null };
         }
     }
 

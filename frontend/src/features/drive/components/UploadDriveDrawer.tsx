@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Input, Modal, Radio, Space, Typography, message } from 'antd';
+import { Alert, Button, Drawer, Input, Radio, Space, Typography, message } from 'antd';
 import type { DriveScope } from '@/features/drive/api/driveApi.ts';
 import {
     useCurrentDriveJobQuery,
@@ -19,7 +19,7 @@ export type DriveRunRequest = {
 
 type DriveMode = 'missing' | 'chapters' | 'retry';
 
-type UploadDriveModalProps = {
+type UploadDriveDrawerProps = {
     open: boolean;
     novelId: number;
     request: DriveRunRequest | null;
@@ -36,7 +36,7 @@ function formatBytes(bytes: number): string {
     return `${Math.max(0, Math.round(bytes / 1024))} KB`;
 }
 
-export function UploadDriveModal({ open, novelId, request, onClose }: UploadDriveModalProps) {
+export function UploadDriveDrawer({ open, novelId, request, onClose }: UploadDriveDrawerProps) {
     const startMutation = useStartDriveJobMutation();
     const currentJobQuery = useCurrentDriveJobQuery();
     const [mode, setMode] = useState<DriveMode>(request?.scope === 'chapters' ? 'chapters' : 'missing');
@@ -138,17 +138,26 @@ export function UploadDriveModal({ open, novelId, request, onClose }: UploadDriv
     })();
 
     return (
-        <Modal
+        <Drawer
             open={open}
             title="Upload MP3 lên Google Drive"
-            okText="Bắt đầu upload"
-            cancelText="Hủy"
-            onCancel={onClose}
-            onOk={() => void submit()}
-            confirmLoading={startMutation.isPending}
-            okButtonProps={{ disabled: !canStart }}
+            placement="right"
+            width={480}
             destroyOnHidden
-            width={560}
+            onClose={onClose}
+            footer={
+                <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+                    <Button onClick={onClose}>Hủy</Button>
+                    <Button
+                        type="primary"
+                        loading={startMutation.isPending}
+                        disabled={!canStart}
+                        onClick={() => void submit()}
+                    >
+                        Bắt đầu upload
+                    </Button>
+                </Space>
+            }
         >
             <Space orientation="vertical" size={12} style={{ width: '100%' }}>
                 {status && !status.credentialsReady ? (
@@ -159,23 +168,12 @@ export function UploadDriveModal({ open, novelId, request, onClose }: UploadDriv
                         description="Không tìm thấy client_secret.json trong worker/. Tải credentials Desktop app từ Google Cloud Console rồi thử lại."
                     />
                 ) : null}
-                {status && status.credentialsReady && !status.tokenReady ? (
-                    <Alert type="info" showIcon title="Chưa đăng nhập Google Drive. Lần chạy đầu sẽ mở trình duyệt để đăng nhập." />
-                ) : null}
                 {driveBusy && driveJob ? (
                     <Alert
                         type="warning"
                         showIcon
                         title={driveJob.novelId === novelId ? 'Đang upload truyện này' : `Đang upload: ${driveJob.novelTitle}`}
                         description="Đợi job hiện tại xong hoặc dừng nó trước khi tạo job mới."
-                    />
-                ) : null}
-                {preview && !preview.driveChecked ? (
-                    <Alert
-                        type="warning"
-                        showIcon
-                        title="Không kiểm tra được Google Drive"
-                        description="Chưa đăng nhập hoặc lỗi mạng. Vẫn upload được — file trùng tên trên Drive sẽ được bỏ qua khi chạy."
                     />
                 ) : null}
 
@@ -234,6 +232,6 @@ export function UploadDriveModal({ open, novelId, request, onClose }: UploadDriv
                     </Typography.Paragraph>
                 ) : null}
             </Space>
-        </Modal>
+        </Drawer>
     );
 }

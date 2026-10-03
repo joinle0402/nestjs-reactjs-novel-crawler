@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { DRIVE_JOB_STATUSES, DRIVE_SCOPES, type DriveFailedFile, type DriveJobStatus, type DriveScope } from '../../entities/drive-upload-job.entity';
+import { DRIVE_JOB_STATUSES, DRIVE_SCOPES, type DriveFailedFile, type DriveFileResult, type DriveJobStatus, type DriveScope } from '../../entities/drive-upload-job.entity';
 
 export class DriveJobProgress {
     @ApiProperty({ description: 'Số file đã upload' })
@@ -63,4 +63,7 @@ export class DriveJobResponse {
 
     @ApiPropertyOptional({ type: Object, isArray: true })
     failedFiles!: DriveFailedFile[];
+
+    @ApiPropertyOptional({ type: Object, isArray: true, description: 'Kết quả từng file: uploaded/skipped/failed' })
+    fileResults!: DriveFileResult[];
 }

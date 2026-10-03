@@ -3,6 +3,7 @@ import { Chapter } from './chapters.entity';
 import { LessThan, MoreThan, Not, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NovelsService } from 'src/novels/novels.service';
+import { DriveService } from 'src/drive/drive.service';
 import { throwIf, throwUnless } from 'src/common/utils/throw-if';
 import { JobStatus } from 'src/common/enums/job-status.enum';
 import { ListChaptersQuery } from './dtos/requests/list-chapters.query';
@@ -31,6 +32,7 @@ export class ChaptersService {
         @InjectRepository(Chapter)
         private readonly chaptersRepository: Repository<Chapter>,
         private readonly novelsService: NovelsService,
+        private readonly driveService: DriveService,
     ) { }
 
     async findByNovel(novelId: number, query: ListChaptersQuery): Promise<PaginatedResponse<ChapterListItem>> {
@@ -66,6 +68,25 @@ export class ChaptersService {
             qb.andWhere("chapter.mp3Path IS NOT NULL AND chapter.mp3Path <> ''");
         } else if (query.hasMp3 === false) {
             qb.andWhere("(chapter.mp3Path IS NULL OR chapter.mp3Path = '')");
+        }
+        if (query.onDrive !== undefined) {
+            const onDriveNumbers = await this.driveService.getOnDriveChapterNumbers(novelId);
+            if (onDriveNumbers === null) {
+                // Không kiểm tra được Drive: coi như không có chương nào "đã trên Drive"
+                if (query.onDrive === true) {
+                    return paginated([], 0, page, limit);
+                }
+            } else if (query.onDrive === true) {
+                if (onDriveNumbers.length === 0) {
+                    return paginated([], 0, page, limit);
+                }
+                qb.andWhere('chapter.chapterNumber IN (:...onDriveNumbers)', { onDriveNumbers });
+            } else {
+                qb.andWhere("chapter.mp3Path IS NOT NULL AND chapter.mp3Path <> ''");
+                if (onDriveNumbers.length > 0) {
+                    qb.andWhere('chapter.chapterNumber NOT IN (:...onDriveNumbers)', { onDriveNumbers });
+                }
+            }
         }
 
         const [rows, total] = await qb.skip((page - 1) * limit).take(limit).getManyAndCount();

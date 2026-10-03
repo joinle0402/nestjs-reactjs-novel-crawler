@@ -15,10 +15,10 @@ Use this map, then `search_graph` / `get_code_snippet` for the one symbol you wi
 
 ## Flow
 
-1. UI: `frontend/src/features/drive/` — `UploadDriveModal`, `DriveLogDrawer`, `driveApi`, `useDriveQueries`. `NovelDetailPage` hosts the modal; `MainLayout` runs the global `useDriveJobWatch` poller.
+1. UI: `frontend/src/features/drive/` — `UploadDriveDrawer`, `DriveJobLine`, `DriveDetailDrawer`, `DriveLogDrawer`, `driveApi`, `useDriveQueries`. `NovelDetailPage` hosts the drawer; `MainLayout` runs the global `useDriveJobWatch` poller and `BottomPlayer` renders `DriveJobLine` while a job is active.
 2. API: `DriveController` → `DriveService` (`backend/src/drive/`).
 3. Process: `DriveWorkerService` starts `worker/drive_worker.py` on module init (skip with `DRIVE_WORKER_AUTOSTART=0`), which polls `drive_upload_jobs` and spawns `worker/drive_upload_runner.py JOB_ID` per job.
-4. Upload: `upload_mp3_files` in `worker/drive_upload.py` — resumable upload into `Drive/{GDRIVE_ROOT_FOLDER}/{novel_folder_name}/`.
+4. Upload: `upload_mp3_files` in `worker/drive_upload.py` — resumable upload into `Drive/{GDRIVE_ROOT_FOLDER}/{novel_folder_name}/`; the `progress` state also carries `uploaded_names` / `skipped_names` so `drive_upload_runner.py` can build per-file results (`{chapterNumber, name, status: uploaded|skipped|failed, error}`) written live via `set_file_results` into the `drive_upload_jobs.file_results` JSON column.
 5. Job rows: `worker/drive_jobs.py`. Chapter MP3 paths: `worker/db.py` (`get_chapters_with_mp3`).
 
 The interactive console also uploads (`worker/console/jobs.py` via `upload_novel_mp3_by_id`, optional `GDRIVE_AUTO_AFTER_TTS`). Web jobs never use the console `JobManager` — the table `drive_upload_jobs` is the only store for web.
@@ -33,7 +33,7 @@ The interactive console also uploads (`worker/console/jobs.py` via `upload_novel
 - Auth: `_get_service(interactive=...)`. Web paths (`drive_upload_runner`, `drive_check`) always use `interactive=False` — the token must already exist; log in once with `python worker/drive_upload.py` (opens browser, saves `token.json`). An invalid/expired refresh token deletes `token.json` and raises a clear error in non-interactive mode.
 - Config lives in `worker/config.py`: `GDRIVE_CREDENTIALS` (`client_secret.json`), `GDRIVE_TOKEN` (`token.json`), `GDRIVE_ROOT_FOLDER` (`novel-crawler-mp3`), `GDRIVE_ENABLED`, `GDRIVE_AUTO_AFTER_TTS`. The backend re-reads only these three string constants by regex (`readDriveConfig` in `drive.service.ts`).
 - `client_secret.json` and `token.json` are gitignored OAuth secrets. Never print, log, or commit their contents or the token value.
-- Preview: `GET /drive/preview` shells out to `python worker/drive_check.py NOVEL_ID` — non-interactive, always exit 0, prints exactly one JSON line (`{"ok", "folder_path", "existing"}`), 120s timeout. Any failure means `driveChecked: false`, never an HTTP error.
+- Preview: `GET /drive/preview` shells out to `python worker/drive_check.py NOVEL_ID` — non-interactive, always exit 0, prints exactly one JSON line (`{"ok", "folder_path", "folder_id", "existing"}`), 120s timeout. The response also exposes `driveFolderId` and `existingNames` (used by the UI for per-chapter Drive status and the Drive folder link). Any failure means `driveChecked: false`, never an HTTP error.
 - Worker log: `worker/logs/drive_worker.log` (rewritten with a `--- spawn ---` header on each restart; backend `getLogs` reads the last 128KB).
 
 API surface on `DriveController`: `status`, `preview`, `current`, `last`, `logs`, `start`, `stop`.
@@ -44,11 +44,12 @@ API surface on `DriveController`: `status`, `preview`, `current`, `last`, `logs`
 | --- | --- |
 | Start, stop, preview, single-job lock, progress shaping | `DriveService` in `backend/src/drive/drive.service.ts` |
 | Spawn/restart the worker | `DriveWorkerService`, `worker/drive_worker.py` |
-| Job rows: claim, progress, failed files, status | `claim_job`, `update_progress`, `set_failed_files`, `mark_if_running` in `worker/drive_jobs.py` |
+| Job rows: claim, progress, failed files, per-file results, status | `claim_job`, `update_progress`, `set_failed_files`, `set_file_results`, `mark_if_running` in `worker/drive_jobs.py` |
 | Scope → chapter list for a job | `resolve_work_numbers` in `worker/drive_upload_runner.py`; backend mirror in `DriveService.start` |
 | OAuth login, token refresh, credentials | `_get_service`, `login` in `worker/drive_upload.py` |
 | Drive folders, skip-existing, upload loop | `_find_or_create_folder`, `_existing_names_in_folder`, `upload_mp3_files` |
 | Web preview without login prompts | `worker/drive_check.py` |
+| Chapters on-Drive filter (`onDrive` param of `GET /chapters/novel/:id`) | `getOnDriveChapterNumbers` in `DriveService` (drive_check result cached 30s, exported by `DriveModule`) |
 
 Tests matching `*.spec.ts` are excluded from the graph. Read those files directly when the change needs a test.
 
@@ -69,3 +70,5 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 ## Changelog
 
 - 2026-10-03 — Initial map: scopes, job statuses, worker chain, stop/lock/skip-existing invariants, OAuth non-interactive rule.
+- 2026-10-03 — UI overhaul: `UploadDriveDrawer` thay `UploadDriveModal` (ẩn alert đăng nhập), `DriveJobLine` bottom bar trong `BottomPlayer`, `DriveDetailDrawer` đọc `file_results` per-file (cột mới `drive_upload_jobs.file_results`), preview trả thêm `folder_id`/`existingNames`.
+- 2026-10-03 — `DriveService` export thêm `getOnDriveChapterNumbers` (drive_check cache TTL 30s); `ChaptersService.findByNovel` hỗ trợ filter `onDrive` cho UI cột Drive + pill Drive.

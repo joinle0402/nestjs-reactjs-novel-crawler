@@ -39,6 +39,12 @@ export class DrivePreviewResponse {
     @ApiPropertyOptional({ nullable: true, description: 'Đường dẫn thư mục đích trên Drive' })
     driveFolder!: string | null;
 
+    @ApiPropertyOptional({ nullable: true, description: 'ID thư mục Drive của truyện (dùng tạo link)' })
+    driveFolderId!: string | null;
+
+    @ApiPropertyOptional({ type: [String], nullable: true, description: 'Tên các file MP3 đã có trên Drive. Null khi không kiểm tra được Drive' })
+    existingNames!: string[] | null;
+
     @ApiPropertyOptional({ type: DriveChaptersPreview, nullable: true })
     chapters!: DriveChaptersPreview | null;
 }

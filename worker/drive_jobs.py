@@ -146,6 +146,19 @@ def set_failed_files(job_id: int, failed_files: list[dict[str, Any]]) -> None:
         )
 
 
+def set_file_results(job_id: int, file_results: list[dict[str, Any]]) -> None:
+    """Ghi kết quả từng file (uploaded/skipped/failed) ngay khi chạy, không đợi cuối job."""
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE drive_upload_jobs
+            SET file_results=?, updated_at=NOW()
+            WHERE id=? AND status='running'
+            """,
+            (json.dumps(file_results, ensure_ascii=False), job_id),
+        )
+
+
 def mark_if_running(job_id: int, status: str, error_message: str | None = None) -> bool:
     """Đổi status chỉ khi job vẫn running. Không ghi đè stopped."""
     message = (error_message or None)

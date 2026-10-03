@@ -9,6 +9,13 @@ export type DriveFailedFile = {
     error: string;
 };
 
+export type DriveFileResult = {
+    chapterNumber: number;
+    name: string;
+    status: 'uploaded' | 'skipped' | 'failed';
+    error?: string;
+};
+
 export type DriveJobProgress = {
     done: number;
     skipped: number;
@@ -33,6 +40,7 @@ export type DriveJob = {
     errorMessage: string | null;
     progress: DriveJobProgress;
     failedFiles: DriveFailedFile[];
+    fileResults: DriveFileResult[];
 };
 
 export type DriveStatus = {
@@ -56,6 +64,8 @@ export type DrivePreview = {
     missingBytes: number | null;
     driveChecked: boolean;
     driveFolder: string | null;
+    driveFolderId: string | null;
+    existingNames: string[] | null;
     chapters: DriveChaptersPreview | null;
 };
 
@@ -68,6 +78,22 @@ export type StartDriveJobBody = {
 export function isActiveDriveJob(job: DriveJob | null | undefined): boolean {
     return job?.status === 'pending' || job?.status === 'running';
 }
+
+export const DRIVE_JOB_STATUS_LABEL: Record<DriveJobStatus, string> = {
+    pending: 'Chờ upload',
+    running: 'Đang upload',
+    stopped: 'Đã dừng',
+    completed: 'Hoàn tất',
+    failed: 'Thất bại',
+};
+
+export const DRIVE_JOB_STATUS_COLOR: Record<DriveJobStatus, string> = {
+    pending: 'default',
+    running: 'processing',
+    stopped: 'warning',
+    completed: 'success',
+    failed: 'error',
+};
 
 export const getDriveStatus = () => axiosClient.get<DriveStatus>('/drive/status');
 

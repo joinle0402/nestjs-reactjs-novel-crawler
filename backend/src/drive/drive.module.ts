@@ -11,5 +11,6 @@ import { DriveWorkerService } from './drive-worker.service';
     imports: [TypeOrmModule.forFeature([DriveUploadJob, Chapter]), NovelsModule],
     controllers: [DriveController],
     providers: [DriveService, DriveWorkerService],
+    exports: [DriveService],
 })
 export class DriveModule {}

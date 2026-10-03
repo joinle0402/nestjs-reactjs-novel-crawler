@@ -22,6 +22,7 @@ from drive_jobs import (
     mark_if_running,
     set_chapter_numbers,
     set_failed_files,
+    set_file_results,
     update_progress,
 )
 from drive_upload import upload_mp3_files
@@ -116,6 +117,7 @@ def run_job(job_id: int) -> None:
         chapter_by_name = {Path(ch.mp3_path).name: ch.chapter_number for ch in chapters if ch.mp3_path}
 
         failed_files: list[dict[str, Any]] = []
+        file_results: dict[str, dict[str, Any]] = {}
 
         def progress(state: dict[str, Any]) -> None:
             last_error = state.get("last_error")
@@ -127,6 +129,27 @@ def run_job(job_id: int) -> None:
                         "name": name,
                         "error": str(last_error)[:500],
                     }
+                )
+            for uploaded_name in state.get("uploaded_names") or []:
+                file_results[uploaded_name] = {"status": "uploaded"}
+            for skipped_name in state.get("skipped_names") or []:
+                file_results[skipped_name] = {"status": "skipped"}
+            if last_error and name:
+                file_results[name] = {"status": "failed", "error": str(last_error)[:500]}
+            if file_results:
+                set_file_results(
+                    job_id,
+                    [
+                        {
+                            "chapterNumber": chapter_by_name.get(file_name, 0),
+                            "name": file_name,
+                            **result,
+                        }
+                        for file_name, result in sorted(
+                            file_results.items(),
+                            key=lambda item: chapter_by_name.get(item[0], 0),
+                        )
+                    ],
                 )
             update_progress(
                 job_id,

@@ -8,7 +8,6 @@ import {
     Select,
     Space,
     Spin,
-    Switch,
     Table,
     Tag,
     Typography,
@@ -18,6 +17,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { CaretRightOutlined, CloudDownloadOutlined, CloudUploadOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
 import { useNovelStatsQuery } from '@/features/novels/hooks/useNovelStatsQuery.ts';
 import { useChaptersQuery } from '@/features/chapters/hooks/useChaptersQuery.ts';
@@ -41,11 +41,35 @@ import { formatChapterRangeInput } from '@/features/tts/lib/chapterRange.ts';
 import { isActiveCrawlJob } from '@/features/crawl/api/crawlApi.ts';
 import { useCreateCrawlJobMutation, useCurrentCrawlJobQuery } from '@/features/crawl/hooks/useCrawlQueries.ts';
 import { isActiveDriveJob } from '@/features/drive/api/driveApi.ts';
-import { UploadDriveModal, type DriveRunRequest } from '@/features/drive/components/UploadDriveModal.tsx';
-import { DriveLogDrawer } from '@/features/drive/components/DriveLogDrawer.tsx';
-import { useCurrentDriveJobQuery, useStopDriveJobMutation } from '@/features/drive/hooks/useDriveQueries.ts';
+import { UploadDriveDrawer, type DriveRunRequest } from '@/features/drive/components/UploadDriveDrawer.tsx';
+import { useCurrentDriveJobQuery, useDrivePreviewQuery } from '@/features/drive/hooks/useDriveQueries.ts';
 
 const PAGE_SIZE = 12;
+
+const { CheckableTag } = Tag;
+
+const PILL_COLORS = {
+    crawl: '#1677ff',
+    tts: '#722ed1',
+    drive: '#52c41a',
+} as const;
+
+function StatPill({ color, checked, onChange, children }: { color: string; checked: boolean; onChange: (checked: boolean) => void; children: ReactNode }) {
+    return (
+        <CheckableTag
+            checked={checked}
+            onChange={onChange}
+            style={{
+                borderRadius: 999,
+                border: `1px solid ${color}`,
+                color: checked ? '#fff' : color,
+                backgroundColor: checked ? color : 'transparent',
+            }}
+        >
+            {children}
+        </CheckableTag>
+    );
+}
 
 function readStatusParam(value: string | null): JobStatusValue | undefined {
     if (!value) {
@@ -64,6 +88,10 @@ function readBooleanParam(value: string | null): boolean | undefined {
     return undefined;
 }
 
+function baseName(filePath: string): string {
+    return filePath.split(/[\\/]/).pop() ?? '';
+}
+
 export function NovelDetailPage() {
     const { novelId: novelIdParam } = useParams();
     const novelId = parseRouteId(novelIdParam);
@@ -75,7 +103,6 @@ export function NovelDetailPage() {
     const [selectedChapters, setSelectedChapters] = useState<Map<number, number>>(new Map());
     const [runRequest, setRunRequest] = useState<TtsRunRequest | null>(null);
     const [driveRequest, setDriveRequest] = useState<DriveRunRequest | null>(null);
-    const [driveLogOpen, setDriveLogOpen] = useState(false);
 
     const createMutation = useCreateChapterMutation();
     const crawlMutation = useCreateCrawlJobMutation();
@@ -83,15 +110,14 @@ export function NovelDetailPage() {
     const crawlActive = isActiveCrawlJob(crawlQuery.data);
     const driveQuery = useCurrentDriveJobQuery();
     const driveActive = isActiveDriveJob(driveQuery.data);
-    const driveHere = driveActive && driveQuery.data?.novelId === novelId;
-    const stopDriveMutation = useStopDriveJobMutation();
+    const drivePreviewQuery = useDrivePreviewQuery(novelId);
     const updateMutation = useUpdateChapterMutation();
     const deleteMutation = useDeleteChapterMutation();
 
     const page = Math.max(1, Number(searchParams.get('page') ?? 1) || 1);
-    const crawlStatus = readStatusParam(searchParams.get('crawlStatus') ?? JobStatus.COMPLETED);
+    const crawlStatus = readStatusParam(searchParams.get('crawlStatus'));
     const ttsStatus = readStatusParam(searchParams.get('ttsStatus'));
-    const hasMp3 = readBooleanParam(searchParams.get('hasMp3'));
+    const onDrive = readBooleanParam(searchParams.get('onDrive'));
 
     const chapterParams: ListChaptersParams = useMemo(
         () => ({
@@ -99,9 +125,13 @@ export function NovelDetailPage() {
             limit: PAGE_SIZE,
             crawlStatus,
             ttsStatus,
-            hasMp3,
+            onDrive,
         }),
-        [page, crawlStatus, ttsStatus, hasMp3],
+        [page, crawlStatus, ttsStatus, onDrive],
+    );
+    const driveExistingNames = useMemo(
+        () => new Set(drivePreviewQuery.data?.existingNames ?? []),
+        [drivePreviewQuery.data],
     );
 
     const novelQuery = useNovelQuery(novelId);
@@ -118,7 +148,6 @@ export function NovelDetailPage() {
         setSelectedChapters(new Map());
         setRunRequest(null);
         setDriveRequest(null);
-        setDriveLogOpen(false);
     }, [novelId]);
 
     const updateFilters = (patch: Record<string, string | undefined>) => {
@@ -241,14 +270,16 @@ export function NovelDetailPage() {
         {
             title: 'TTS',
             dataIndex: 'ttsStatus',
-            width: 120,
+            width: 90,
             render: (statusValue: JobStatusValue) => <JobStatusTag status={statusValue} />,
         },
         {
-            title: 'MP3',
-            dataIndex: 'hasMp3',
+            title: 'Drive',
+            key: 'drive',
             width: 90,
-            render: (value: boolean) => (value ? <Tag color="green">Có</Tag> : <Tag>Chưa</Tag>),
+            render: (_, chapter) => {
+                return <JobStatusTag status={driveChecked && chapter.hasMp3 ? JobStatus.COMPLETED : JobStatus.PENDING} />;
+            },
         },
         {
             title: '',
@@ -257,23 +288,23 @@ export function NovelDetailPage() {
             fixed: 'right',
             render: (_, chapter) => (
                 <Space size={0} onClick={(event) => event.stopPropagation()}>
-                    {chapter.hasMp3 && novelId && novelQuery.data ? (
-                        <Button
-                            type="link"
-                            size="small"
-                            icon={<CaretRightOutlined />}
-                            loading={status === 'loading' && track?.chapterId === chapter.id}
-                            onClick={() => {
-                                void playChapter({
-                                    novelId,
-                                    novelTitle: novelQuery.data.title,
-                                    chapterId: chapter.id,
-                                });
-                            }}
-                        >
-                            Nghe
-                        </Button>
-                    ) : null}
+                    <Button
+                        disabled={!chapter.hasMp3 || !novelId || !novelQuery.data}
+                        type="link"
+                        size="small"
+                        icon={<CaretRightOutlined />}
+                        title="Nghe"
+                        aria-label="Nghe chương"
+                        loading={status === 'loading' && track?.chapterId === chapter.id}
+                        onClick={() => {
+                            if (!novelId || !novelQuery.data) return;
+                            void playChapter({
+                                novelId,
+                                novelTitle: novelQuery.data.title,
+                                chapterId: chapter.id,
+                            });
+                        }}
+                    />
                     <Button
                         type="text"
                         size="small"
@@ -315,6 +346,16 @@ export function NovelDetailPage() {
     const missing = previewQuery.data?.missing ?? 0;
     const failed = previewQuery.data?.failed ?? 0;
     const selectedNumbers = [...selectedChapters.values()].sort((a, b) => a - b);
+
+    const driveChecked = drivePreviewQuery.data?.driveChecked ?? false;
+    const driveFolderId = drivePreviewQuery.data?.driveFolderId ?? null;
+    const driveDone =
+        drivePreviewQuery.data?.driveChecked && drivePreviewQuery.data.missingOnDrive != null
+            ? Math.max(0, drivePreviewQuery.data.totalFiles - drivePreviewQuery.data.missingOnDrive)
+            : null;
+    const hasOnDrive = (drivePreviewQuery.data?.existingNames?.length ?? 0) > 0;
+    const isOnDrive = (chapter: ChapterListItem) =>
+        driveChecked && chapter.hasMp3 && Boolean(chapter.mp3Path) && driveExistingNames.has(baseName(chapter.mp3Path!));
     const ttsAction = (() => {
         if (selectedNumbers.length > 0) {
             return {
@@ -345,15 +386,26 @@ export function NovelDetailPage() {
             <Card
                 size="small"
                 title={
-                    <>
-                        {novel.title}{' '}
-                        <Typography.Link href={novel.url} target="_blank" rel="noreferrer" style={{ fontWeight: 'normal', fontSize: 13 }}>
-                            (Nguồn)
-                        </Typography.Link>
-                        {' - '}
-                        {novel.author || 'Không rõ tác giả'} - {stats?.total} chương | {stats?.crawled} đã crawl |{' '}
-                        {stats?.ttsDone} đã TTS | {stats?.crawlFailed} lỗi crawl / {stats?.ttsFailed} lỗi TTS
-                    </>
+                    <div style={{ minWidth: 0 }}>
+                        <div>
+                            {novel.title}{' '}
+                            <Typography.Link href={novel.url} target="_blank" rel="noreferrer" style={{ fontWeight: 'normal', fontSize: 13 }}>
+                                (Nguồn)
+                            </Typography.Link>
+                            {hasOnDrive && driveFolderId ? (
+                                <Typography.Link
+                                    href={`https://drive.google.com/drive/folders/${driveFolderId}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{ fontWeight: 'normal', fontSize: 13 }}
+                                >
+                                    (Drive)
+                                </Typography.Link>
+                            ) : null}
+                            {' - '}
+                            {novel.author || 'Không rõ tác giả'}
+                        </div>
+                    </div>
                 }
                 extra={
                     <Space>
@@ -378,7 +430,7 @@ export function NovelDetailPage() {
                                 )
                             }
                         >
-                            Upload Drive
+                            {selectedNumbers.length > 0 ? `Upload Drive (${selectedNumbers.length})` : 'Upload Drive'}
                         </Button>
                         <Button
                             icon={<CloudDownloadOutlined />}
@@ -433,33 +485,34 @@ export function NovelDetailPage() {
                         value={ttsStatus}
                         onChange={(value) => updateFilters({ ttsStatus: value })}
                     />
-                    <Space>
-                        <Switch checked={hasMp3 === true} onChange={(checked) => updateFilters({ hasMp3: checked ? 'true' : undefined })} />
-                        <Typography.Text>Chỉ chương có MP3</Typography.Text>
-                    </Space>
+                    <Tag style={{ marginInlineEnd: 0 }}>{stats?.total ?? 0} chương</Tag>
+                    <StatPill
+                        color={PILL_COLORS.crawl}
+                        checked={crawlStatus === JobStatus.COMPLETED}
+                        onChange={(checked) => updateFilters({ crawlStatus: checked ? JobStatus.COMPLETED : undefined })}
+                    >
+                        Crawl {stats?.crawled ?? 0}
+                    </StatPill>
+                    <StatPill
+                        color={PILL_COLORS.tts}
+                        checked={ttsStatus === JobStatus.COMPLETED}
+                        onChange={(checked) => updateFilters({ ttsStatus: checked ? JobStatus.COMPLETED : undefined })}
+                    >
+                        TTS {stats?.ttsDone ?? 0}
+                    </StatPill>
+                    
+                    <StatPill
+                        color={PILL_COLORS.drive}
+                        checked={onDrive === true}
+                        onChange={(checked) => updateFilters({ onDrive: checked ? 'true' : undefined })}
+                    >
+                        Drive {driveDone ?? 0}
+                    </StatPill>
                 </Space>
 
                 {jobHere && jobQuery.data ? (
                     <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
                         {jobQuery.data.progress.detail}
-                    </Typography.Paragraph>
-                ) : null}
-
-                {driveHere && driveQuery.data ? (
-                    <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-                        {driveQuery.data.progress.detail}{' '}
-                        <Typography.Link onClick={() => setDriveLogOpen(true)}>Xem log</Typography.Link>
-                        {' · '}
-                        <Typography.Link
-                            onClick={() =>
-                                stopDriveMutation.mutate(undefined, {
-                                    onSuccess: () => message.success('Đã yêu cầu dừng upload Drive'),
-                                    onError: (error) => message.error(getErrorMessage(error, 'Không dừng được upload Drive')),
-                                })
-                            }
-                        >
-                            Dừng upload
-                        </Typography.Link>
                     </Typography.Paragraph>
                 ) : null}
 
@@ -514,7 +567,7 @@ export function NovelDetailPage() {
                                 navigate(`/novels/${novelId}/chapters/${chapter.id}`);
                             },
                         })}
-                        scroll={{ x: 900 }}
+                        scroll={{ x: 1000 }}
                     />
                 )}
             </Card>
@@ -527,15 +580,13 @@ export function NovelDetailPage() {
                 onClose={() => setRunRequest(null)}
             />
 
-            <UploadDriveModal
+            <UploadDriveDrawer
                 key={driveRequest ? `${driveRequest.scope}:${driveRequest.chapterRange}` : 'drive-run'}
                 open={driveRequest !== null}
                 novelId={novelId}
                 request={driveRequest}
                 onClose={() => setDriveRequest(null)}
             />
-
-            <DriveLogDrawer open={driveLogOpen} title={novel.title} onClose={() => setDriveLogOpen(false)} />
 
             <ChapterFormModal
                 open={formOpen}
