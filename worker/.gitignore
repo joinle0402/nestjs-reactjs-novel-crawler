@@ -10,6 +10,8 @@ tts_worker.lock
 tts_runner.pid
 crawl_worker.lock
 crawl_runner.pid
+drive_worker.lock
+drive_runner.pid
 novels.db
 *.db
 browser_state.json

@@ -14,6 +14,8 @@ Namespace: `user-codebase-memory-mcp`
   `.cursor/skills/crawler-workflow`
 - Before exploring or modifying TTS, read:
   `.cursor/skills/tts-workflow`
+- Before exploring or modifying Drive, read:
+  `.cursor/skills/drive-workflow`
 - If a change makes a skill fact false, patch only the stale bullet/map row and append one changelog line.
 - Do not rewrite the skill when its contract remains valid.
 
