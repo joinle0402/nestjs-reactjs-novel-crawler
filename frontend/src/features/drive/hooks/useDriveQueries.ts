@@ -10,8 +10,10 @@ import {
     isActiveDriveJob,
     startDriveJob,
     stopDriveJob,
+    type DrivePreview,
     type StartDriveJobBody,
 } from '@/features/drive/api/driveApi.ts';
+import { chapterKeys } from '@/features/chapters/hooks/useChaptersQuery.ts';
 
 export const driveKeys = {
     current: ['drive', 'current'] as const,
@@ -23,6 +25,14 @@ export const driveKeys = {
 };
 
 const POLL_MS = 2500;
+
+async function refreshDrivePreview(queryClient: ReturnType<typeof useQueryClient>, novelId: number): Promise<DrivePreview> {
+    const preview = await getDrivePreview(novelId, undefined, { refresh: true });
+    queryClient.setQueryData(driveKeys.preview(novelId, ''), preview);
+    void queryClient.invalidateQueries({ queryKey: driveKeys.previews });
+    void queryClient.invalidateQueries({ queryKey: chapterKeys.lists() });
+    return preview;
+}
 
 export function useCurrentDriveJobQuery() {
     return useQuery({
@@ -106,11 +116,18 @@ export function useDriveJobWatch() {
                 message.success(`Đã upload Drive xong: ${done} file${skipped > 0 ? ` · bỏ qua ${skipped} file đã có` : ''}`);
             }
         }
-        void queryClient.invalidateQueries({ queryKey: driveKeys.previews });
+        void refreshDrivePreview(queryClient, job.novelId);
         void queryClient.invalidateQueries({ queryKey: driveKeys.status });
     }, [query.data, queryClient]);
 
     return query;
+}
+
+export function useSyncDrivePreviewMutation() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (novelId: number) => refreshDrivePreview(queryClient, novelId),
+    });
 }
 
 export function useStartDriveJobMutation() {
@@ -130,7 +147,7 @@ export function useStopDriveJobMutation() {
         mutationFn: stopDriveJob,
         onSuccess: (job) => {
             queryClient.setQueryData(driveKeys.current, job);
-            void queryClient.invalidateQueries({ queryKey: driveKeys.previews });
+            void refreshDrivePreview(queryClient, job.novelId);
         },
     });
 }

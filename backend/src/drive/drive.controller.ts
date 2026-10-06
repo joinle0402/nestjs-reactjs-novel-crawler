@@ -24,8 +24,10 @@ export class DriveController {
     preview(
         @Query('novelId', ParseIntPipe) novelId: number,
         @Query('chapterRange') chapterRange?: string,
+        @Query('refresh') refresh?: string,
     ): Promise<DrivePreviewResponse> {
-        return this.driveService.preview(novelId, chapterRange);
+        const forceRefresh = refresh === '1' || refresh === 'true';
+        return this.driveService.preview(novelId, chapterRange, forceRefresh);
     }
 
     @Get('jobs/current')

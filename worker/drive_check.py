@@ -41,14 +41,21 @@ def main() -> None:
                     "folder_path": f"{GDRIVE_ROOT_FOLDER}/{folder_name}",
                     "folder_id": folder_id,
                     "existing": existing,
-                },
-                ensure_ascii=False,
+                }
             )
         )
     except Exception as exc:
         traceback.print_exc()
-        print(json.dumps({"ok": False, "reason": str(exc)[:300]}, ensure_ascii=False))
+        print(json.dumps({"ok": False, "reason": str(exc)[:300]}))
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        for name in ("stdout", "stderr"):
+            stream = getattr(sys, name, None)
+            if stream and hasattr(stream, "reconfigure"):
+                try:
+                    stream.reconfigure(encoding="utf-8", errors="replace")
+                except Exception:
+                    pass
     main()

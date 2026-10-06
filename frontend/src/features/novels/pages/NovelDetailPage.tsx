@@ -14,7 +14,7 @@ import {
     message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { CaretRightOutlined, CloudDownloadOutlined, CloudUploadOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
+import { CaretRightOutlined, CloudDownloadOutlined, CloudSyncOutlined, CloudUploadOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -42,7 +42,7 @@ import { isActiveCrawlJob } from '@/features/crawl/api/crawlApi.ts';
 import { useCreateCrawlJobMutation, useCurrentCrawlJobQuery } from '@/features/crawl/hooks/useCrawlQueries.ts';
 import { isActiveDriveJob } from '@/features/drive/api/driveApi.ts';
 import { UploadDriveDrawer, type DriveRunRequest } from '@/features/drive/components/UploadDriveDrawer.tsx';
-import { useCurrentDriveJobQuery, useDrivePreviewQuery } from '@/features/drive/hooks/useDriveQueries.ts';
+import { useCurrentDriveJobQuery, useDrivePreviewQuery, useSyncDrivePreviewMutation } from '@/features/drive/hooks/useDriveQueries.ts';
 
 const PAGE_SIZE = 12;
 
@@ -111,6 +111,7 @@ export function NovelDetailPage() {
     const driveQuery = useCurrentDriveJobQuery();
     const driveActive = isActiveDriveJob(driveQuery.data);
     const drivePreviewQuery = useDrivePreviewQuery(novelId);
+    const syncDriveMutation = useSyncDrivePreviewMutation();
     const updateMutation = useUpdateChapterMutation();
     const deleteMutation = useDeleteChapterMutation();
 
@@ -129,10 +130,61 @@ export function NovelDetailPage() {
         }),
         [page, crawlStatus, ttsStatus, onDrive],
     );
+    const driveChecked = drivePreviewQuery.data?.driveChecked ?? false;
+    const driveFolderId = drivePreviewQuery.data?.driveFolderId ?? null;
     const driveExistingNames = useMemo(
         () => new Set(drivePreviewQuery.data?.existingNames ?? []),
         [drivePreviewQuery.data],
     );
+    const jobOnDriveNumbers = useMemo(() => {
+        const job = driveQuery.data;
+        if (!job || job.novelId !== novelId) {
+            return new Set<number>();
+        }
+        return new Set(
+            job.fileResults
+                .filter((file) => file.status === 'uploaded' || file.status === 'skipped')
+                .map((file) => file.chapterNumber)
+                .filter((number) => number > 0),
+        );
+    }, [driveQuery.data, novelId]);
+    const jobOnDriveNames = useMemo(() => {
+        const job = driveQuery.data;
+        if (!job || job.novelId !== novelId) {
+            return new Set<string>();
+        }
+        return new Set(
+            job.fileResults
+                .filter((file) => file.status === 'uploaded' || file.status === 'skipped')
+                .map((file) => file.name)
+                .filter((name) => name.length > 0),
+        );
+    }, [driveQuery.data, novelId]);
+    const isOnDrive = (chapter: ChapterListItem) => {
+        if (jobOnDriveNumbers.has(chapter.chapterNumber)) {
+            return true;
+        }
+        if (!chapter.hasMp3 || !chapter.mp3Path) {
+            return false;
+        }
+        const name = baseName(chapter.mp3Path);
+        if (jobOnDriveNames.has(name)) {
+            return true;
+        }
+        return driveChecked && driveExistingNames.has(name);
+    };
+    const driveDone = useMemo(() => {
+        const preview = drivePreviewQuery.data;
+        const fromPreview = preview?.driveChecked && preview.missingOnDrive != null ? Math.max(0, preview.totalFiles - preview.missingOnDrive) : null;
+        const job = driveQuery.data;
+        if (job?.novelId === novelId) {
+            const live = (job?.progress.done ?? 0) + (job?.progress.skipped ?? 0);
+            const merged = Math.max(fromPreview ?? 0, live, jobOnDriveNumbers.size);
+            return preview?.totalFiles != null ? Math.min(preview.totalFiles, merged) : merged;
+        }
+        return fromPreview ?? 0;
+    }, [drivePreviewQuery.data, driveQuery.data, jobOnDriveNumbers.size, novelId]);
+    const hasOnDrive = (drivePreviewQuery.data?.existingNames?.length ?? 0) > 0 || jobOnDriveNumbers.size > 0 || jobOnDriveNames.size > 0;
 
     const novelQuery = useNovelQuery(novelId);
     const jobQuery = useCurrentTtsJobQuery();
@@ -277,9 +329,9 @@ export function NovelDetailPage() {
             title: 'Drive',
             key: 'drive',
             width: 90,
-            render: (_, chapter) => {
-                return <JobStatusTag status={driveChecked && chapter.hasMp3 ? JobStatus.COMPLETED : JobStatus.PENDING} />;
-            },
+            render: (_, chapter) => (
+                <JobStatusTag status={isOnDrive(chapter) ? JobStatus.COMPLETED : JobStatus.PENDING} />
+            ),
         },
         {
             title: '',
@@ -347,15 +399,6 @@ export function NovelDetailPage() {
     const failed = previewQuery.data?.failed ?? 0;
     const selectedNumbers = [...selectedChapters.values()].sort((a, b) => a - b);
 
-    const driveChecked = drivePreviewQuery.data?.driveChecked ?? false;
-    const driveFolderId = drivePreviewQuery.data?.driveFolderId ?? null;
-    const driveDone =
-        drivePreviewQuery.data?.driveChecked && drivePreviewQuery.data.missingOnDrive != null
-            ? Math.max(0, drivePreviewQuery.data.totalFiles - drivePreviewQuery.data.missingOnDrive)
-            : null;
-    const hasOnDrive = (drivePreviewQuery.data?.existingNames?.length ?? 0) > 0;
-    const isOnDrive = (chapter: ChapterListItem) =>
-        driveChecked && chapter.hasMp3 && Boolean(chapter.mp3Path) && driveExistingNames.has(baseName(chapter.mp3Path!));
     const ttsAction = (() => {
         if (selectedNumbers.length > 0) {
             return {
@@ -393,14 +436,17 @@ export function NovelDetailPage() {
                                 (Nguồn)
                             </Typography.Link>
                             {hasOnDrive && driveFolderId ? (
-                                <Typography.Link
-                                    href={`https://drive.google.com/drive/folders/${driveFolderId}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={{ fontWeight: 'normal', fontSize: 13 }}
-                                >
-                                    (Drive)
-                                </Typography.Link>
+                                <>
+                                    {' '}
+                                    <Typography.Link
+                                        href={`https://drive.google.com/drive/folders/${driveFolderId}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        style={{ fontWeight: 'normal', fontSize: 13 }}
+                                    >
+                                        (Drive)
+                                    </Typography.Link>
+                                </>
                             ) : null}
                             {' - '}
                             {novel.author || 'Không rõ tác giả'}
@@ -431,6 +477,29 @@ export function NovelDetailPage() {
                             }
                         >
                             {selectedNumbers.length > 0 ? `Upload Drive (${selectedNumbers.length})` : 'Upload Drive'}
+                        </Button>
+                        <Button
+                            icon={<CloudSyncOutlined />}
+                            loading={syncDriveMutation.isPending}
+                            title="Đồng bộ trạng thái Drive (khi upload tay hoặc trạng thái lệch)"
+                            onClick={() =>
+                                syncDriveMutation.mutate(novel.id, {
+                                    onSuccess: (preview) => {
+                                        if (!preview.driveChecked) {
+                                            message.warning('Không kiểm tra được Drive. Kiểm tra token/credentials trong worker.');
+                                            return;
+                                        }
+                                        const done =
+                                            preview.missingOnDrive != null
+                                                ? Math.max(0, preview.totalFiles - preview.missingOnDrive)
+                                                : (preview.existingNames?.length ?? 0);
+                                        message.success(`Đã đồng bộ Drive: ${done} file trên Drive`);
+                                    },
+                                    onError: (error) => message.error(getErrorMessage(error, 'Không đồng bộ được Drive')),
+                                })
+                            }
+                        >
+                            Đồng bộ Drive
                         </Button>
                         <Button
                             icon={<CloudDownloadOutlined />}
@@ -506,7 +575,7 @@ export function NovelDetailPage() {
                         checked={onDrive === true}
                         onChange={(checked) => updateFilters({ onDrive: checked ? 'true' : undefined })}
                     >
-                        Drive {driveDone ?? 0}
+                        Drive {driveDone}
                     </StatPill>
                 </Space>
 

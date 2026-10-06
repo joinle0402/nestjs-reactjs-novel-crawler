@@ -97,11 +97,12 @@ export const DRIVE_JOB_STATUS_COLOR: Record<DriveJobStatus, string> = {
 
 export const getDriveStatus = () => axiosClient.get<DriveStatus>('/drive/status');
 
-export const getDrivePreview = (novelId: number, chapterRange?: string) =>
+export const getDrivePreview = (novelId: number, chapterRange?: string, options?: { refresh?: boolean }) =>
     axiosClient.get<DrivePreview>('/drive/preview', {
         params: {
             novelId,
             ...(chapterRange ? { chapterRange } : {}),
+            ...(options?.refresh ? { refresh: '1' } : {}),
         },
     });
 
