@@ -102,8 +102,11 @@ export class DriveService {
         };
     }
 
-    async preview(novelId: number, chapterRange?: string): Promise<DrivePreviewResponse> {
+    async preview(novelId: number, chapterRange?: string, refresh = false): Promise<DrivePreviewResponse> {
         const novel = await this.novelsService.findOne(novelId);
+        if (refresh) {
+            this.checkCache.delete(novel.id);
+        }
         const facts = await this.loadFacts(novel.id);
         const totalBytes = facts.reduce((sum, fact) => sum + fact.sizeBytes, 0);
         const check = await this.runDriveCheck(novel.id);
@@ -163,6 +166,7 @@ export class DriveService {
         }
         throwUnless(numbers.length > 0, 'Không có chương MP3 nào trong phạm vi đã chọn', HttpStatus.BAD_REQUEST);
 
+        this.checkCache.delete(novel.id);
         const saved = await this.insertJob({
             novelId: novel.id,
             scope: request.scope,
@@ -184,6 +188,7 @@ export class DriveService {
         throwUnless(result.affected, 'Không có job upload Drive đang chạy', HttpStatus.NOT_FOUND);
 
         const stopped = await this.jobsRepository.findOneByOrFail({ id: active.id });
+        this.checkCache.delete(stopped.novelId);
         const novel = await this.novelsService.findOne(stopped.novelId);
         return this.toResponse(stopped, novel.title);
     }
@@ -205,6 +210,7 @@ export class DriveService {
         if (Date.now() - new Date(recent.finishedAt).getTime() > RECENT_JOB_MS) {
             return null;
         }
+        this.checkCache.delete(recent.novelId);
         const novel = await this.novelsService.findOne(recent.novelId);
         return this.toResponse(recent, novel.title);
     }
