@@ -43,11 +43,27 @@ def _emit(protocol, payload: dict) -> None:
 
 
 REF_VOICES_DIR = Path(__file__).resolve().parent / "ref_voices"
+CLONE_TEMP_DIR = Path(__file__).resolve().parent / "tmp"
+
+
+def _use_writable_clone_tempdir() -> None:
+    """VieNeu ghi WAV tạm vào ~/.cache/vieneu/tmp. Python bị từ chối ghi thư mục đó, mkstemp quay vòng rất lâu."""
+    import tempfile
+
+    CLONE_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    target = str(CLONE_TEMP_DIR)
+    original = tempfile.mkstemp
+
+    def mkstemp(suffix=None, prefix=None, dir=None, text=False):
+        return original(suffix=suffix, prefix=prefix, dir=target, text=text)
+
+    tempfile.mkstemp = mkstemp
 
 
 def _register_custom_voices(engine) -> None:
     if not REF_VOICES_DIR.is_dir():
         return
+    _use_writable_clone_tempdir()
 
     # Giọng Hoài My được clone từ edge-tts
     hoaimy_ref = REF_VOICES_DIR / "hoaimy.wav"

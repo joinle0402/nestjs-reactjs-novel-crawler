@@ -140,6 +140,13 @@ def _safe_filename(text: str, max_len: int = 80) -> str:
     return cleaned[:max_len] or "chapter"
 
 
+def _tts_temp_dir() -> str:
+    """Chunk WAV phải nằm trong project. Python không ghi được AppData\\Local\\Temp."""
+    path = Path(__file__).resolve().parent / "tmp"
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
+
+
 def _progress_pct(current: int, total: int) -> int:
     if total <= 0:
         return 100
@@ -390,7 +397,7 @@ async def _write_vieneu_chunks(
             on_chunk_done(len(chunks[0]))
         return
 
-    with tempfile.TemporaryDirectory(prefix="tts_chunk_") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix="tts_chunk_", dir=_tts_temp_dir()) as tmp_dir:
         tmp = Path(tmp_dir)
         chunk_paths: list[Path] = []
         tasks = []
@@ -810,7 +817,7 @@ async def _tts_chapter_content(
         _on_chunk_done(chars_total)
         return
 
-    with tempfile.TemporaryDirectory(prefix="tts_chunk_") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix="tts_chunk_", dir=_tts_temp_dir()) as tmp_dir:
         tmp = Path(tmp_dir)
         chunk_paths: list[Path] = []
         tasks = []
