@@ -11,8 +11,9 @@ import { Novel } from 'src/novels/entities/novel.entity';
 import { NovelsService } from 'src/novels/novels.service';
 import { ChapterRangeParseError, formatChapterList, parseChapterRange } from 'src/tts/chapter-range';
 import { resolveWorkerDir } from 'src/tts/tts-settings.service';
+import { readNovelPreview } from './crawl-preview';
 import { CreateCrawlJobRequest, ListCrawlChaptersQuery, ListCrawlJobsQuery } from './dtos/requests/crawl.request';
-import { CrawlJobChapterResponse, CrawlJobListResponse, CrawlJobProgress, CrawlJobResponse, CrawlLookupResponse } from './dtos/responses/crawl.response';
+import { CrawlJobChapterResponse, CrawlJobListResponse, CrawlJobProgress, CrawlJobResponse, CrawlLookupResponse, CrawlPreviewResponse } from './dtos/responses/crawl.response';
 import { CrawlJobChapter } from './entities/crawl-job-chapter.entity';
 import { CRAWL_ACTIVE_STATUSES, CrawlJob, type CrawlJobStatus, type CrawlScope } from './entities/crawl-job.entity';
 import { NovelUrlError, normalizeNovelUrl } from './novel-url';
@@ -52,6 +53,21 @@ export class CrawlService {
         private readonly novelsService: NovelsService,
         private readonly dataSource: DataSource,
     ) {}
+
+    private previewing = false;
+
+    async preview(url: string): Promise<CrawlPreviewResponse> {
+        const normalized = this.normalize(url);
+        if (this.previewing) {
+            throw new HttpException('Đang đọc một URL khác. Đợi xong rồi thử lại.', HttpStatus.CONFLICT);
+        }
+        this.previewing = true;
+        try {
+            return await readNovelPreview(normalized);
+        } finally {
+            this.previewing = false;
+        }
+    }
 
     async lookup(url: string): Promise<CrawlLookupResponse> {
         const normalized = this.normalize(url);

@@ -62,6 +62,16 @@ export type CrawlJobChapter = {
     finishedAt: string | null;
 };
 
+export type CrawlPreview = {
+    url: string;
+    novelId: number;
+    title: string;
+    author: string;
+    summary: string;
+    chapterCount: number;
+    vipCount: number;
+};
+
 export type CrawlLookup = {
     url: string;
     novelId: number | null;
@@ -117,6 +127,9 @@ export function canResumeCrawlJob(status: CrawlJobStatus): boolean {
 }
 
 export const lookupCrawlUrl = (url: string) => axiosClient.get<CrawlLookup>('/crawl/lookup', { params: { url } });
+
+export const previewCrawlUrl = (url: string) =>
+    axiosClient.get<CrawlPreview>('/crawl/preview', { params: { url }, timeout: 90_000 });
 
 export const listCrawlJobs = (params: { status?: CrawlJobStatus; novelId?: number; page?: number; limit?: number }) =>
     axiosClient.get<CrawlJobList>('/crawl/jobs', { params });

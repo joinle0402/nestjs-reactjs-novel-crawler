@@ -34,7 +34,7 @@ Use this map, then `search_graph` / `get_code_snippet` for the one symbol you wi
 - Forbidden, captcha, and temporary server errors recover or wait inside `worker/crawler.py`. Do not drop those paths when adding a feature.
 - `browser_state.json` is gitignored session state. Do not commit it or print cookies.
 
-API surface on `CrawlController`: `lookup`, `logs`, `current`, `list`, `create`, `getOne`, `update`, `remove`, `chapters`, `pause`, `resume`, `continueManual`, `cancel`, `retry`.
+API surface on `CrawlController`: `lookup`, `preview`, `logs`, `current`, `list`, `create`, `getOne`, `update`, `remove`, `chapters`, `pause`, `resume`, `continueManual`, `cancel`, `retry`. `preview` reads title, author, summary, and the free chapter list with Playwright `headless=True`, upserts the novel, and inserts chapter rows that do not exist yet. It does not write chapter text or the browser session.
 
 ## Where to look
 
@@ -46,6 +46,7 @@ API surface on `CrawlController`: `lookup`, `logs`, `current`, `list`, `create`,
 | Page navigation, forbidden, captcha | `_goto_chapter`, `_recover_from_forbidden`, `_wait_for_content_with_captcha` |
 | Chapter list or body selectors | `_get_chapter_list`, `_extract_chapter_content` |
 | URL normalization | `backend/src/crawl/novel-url.ts` and `_normalize_novel_url` |
+| Novel page preview (title, author, summary, chapter count) | `preview_novel` in `worker/crawler.py`, `GET /crawl/preview` |
 
 Tests matching `*.spec.ts` are excluded from the graph. Read those files directly when the change needs a test.
 
@@ -68,3 +69,5 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-09-27 — Initial map: scopes, job statuses, worker chain, content invariant.
 - 2026-09-27 — API adds `logs`, `update`, `remove`. Resume of a stopped job requeues that same job id.
 - 2026-09-30 — Add scope `refresh` (update new chapter list). `crawl_jobs.rest_until`/`rest_kind` expose per-chapter and batch pause state to the API/UI; `CrawlControl.on_rest` reports it.
+- 2026-10-11 — Add `preview`: headless Playwright reads title, author, summary, and free-chapter count. The add-novel form can open the crawl drawer with that URL and chapter range.
+- 2026-10-11 — `preview` now upserts the novel and inserts missing chapter rows. Adding a novel with an existing URL updates that novel.

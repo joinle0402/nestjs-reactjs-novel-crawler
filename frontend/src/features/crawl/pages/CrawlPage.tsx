@@ -67,6 +67,7 @@ function draftFrom(job: CrawlJob, mode: 'edit' | 'clone'): CrawlTaskDraft {
 export function CrawlPage() {
     const [params] = useSearchParams();
     const novelId = parseRouteId(params.get('novelId') ?? undefined);
+    const chapterRangeParam = params.get('chapterRange')?.trim() ?? '';
     const jobIdParam = parseRouteId(params.get('jobId') ?? undefined);
     const novelQuery = useNovelQuery(novelId);
     const currentQuery = useCurrentCrawlJobQuery();
@@ -107,10 +108,10 @@ export function CrawlPage() {
             novelId,
             url: novelQuery.data.url,
             scope: 'chapters' satisfies CrawlScope,
-            chapterRange: '',
+            chapterRange: chapterRangeParam,
         });
         setDetailOpen(false);
-    }, [jobIdParam, novelId, novelQuery.data?.url]);
+    }, [chapterRangeParam, jobIdParam, novelId, novelQuery.data?.url]);
 
     const openDetail = (id: number) => {
         setSelectedId(id);

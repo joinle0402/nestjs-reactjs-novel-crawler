@@ -47,7 +47,16 @@ export class NovelsService {
     }
 
     async create(request: CreateNovelRequest): Promise<Novel> {
-        const model = this.novelsRepository.create(request);
+        const url = request.url.trim();
+        const withSlash = url.endsWith('/') ? url : `${url}/`;
+        const existing = await this.novelsRepository.findOne({ where: [{ url }, { url: withSlash }] });
+        if (existing) {
+            existing.title = request.title;
+            existing.author = request.author ?? null;
+            existing.summary = request.summary ?? null;
+            return this.novelsRepository.save(existing);
+        }
+        const model = this.novelsRepository.create({ ...request, url });
         return this.novelsRepository.save(model);
     }
 

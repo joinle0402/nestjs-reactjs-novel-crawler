@@ -112,6 +112,29 @@ export class CrawlJobChapterResponse {
     finishedAt!: Date | null;
 }
 
+export class CrawlPreviewResponse {
+    @ApiProperty()
+    url!: string;
+
+    @ApiProperty()
+    novelId!: number;
+
+    @ApiProperty()
+    title!: string;
+
+    @ApiProperty()
+    author!: string;
+
+    @ApiProperty()
+    summary!: string;
+
+    @ApiProperty({ description: 'Số chương miễn phí trên trang nguồn' })
+    chapterCount!: number;
+
+    @ApiProperty({ description: 'Số chương VIP bị bỏ qua' })
+    vipCount!: number;
+}
+
 export class CrawlLookupResponse {
     @ApiProperty()
     url!: string;

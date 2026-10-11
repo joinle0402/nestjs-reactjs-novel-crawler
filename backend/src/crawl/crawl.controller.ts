@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Po
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CrawlService } from './crawl.service';
 import { CreateCrawlJobRequest, ListCrawlChaptersQuery, ListCrawlJobsQuery } from './dtos/requests/crawl.request';
-import { CrawlJobChapterResponse, CrawlJobListResponse, CrawlJobResponse, CrawlLookupResponse } from './dtos/responses/crawl.response';
+import { CrawlJobChapterResponse, CrawlJobListResponse, CrawlJobResponse, CrawlLookupResponse, CrawlPreviewResponse } from './dtos/responses/crawl.response';
 
 @ApiTags('Crawl')
 @Controller('crawl')
@@ -14,6 +14,13 @@ export class CrawlController {
     @ApiOkResponse({ type: CrawlLookupResponse })
     lookup(@Query('url') url = ''): Promise<CrawlLookupResponse> {
         return this.crawlService.lookup(url);
+    }
+
+    @Get('preview')
+    @ApiOperation({ summary: 'Đọc tiêu đề, tác giả, tóm tắt và số chương từ URL bằng Playwright headless' })
+    @ApiOkResponse({ type: CrawlPreviewResponse })
+    preview(@Query('url') url = ''): Promise<CrawlPreviewResponse> {
+        return this.crawlService.preview(url);
     }
 
     @Get('logs')

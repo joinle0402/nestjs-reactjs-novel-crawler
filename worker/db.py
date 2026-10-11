@@ -474,6 +474,44 @@ def ensure_chapter_record(
         )
 
 
+def ensure_chapter_records(novel_id: int, chapters: list[tuple[str, int, str]]) -> int:
+    """Tạo các chương chưa có. Không ghi đè nội dung đã cào."""
+    if not chapters:
+        return 0
+    now = _now()
+    with get_db() as conn:
+        existing = {
+            str(row["chapter_site_id"])
+            for row in conn.execute(
+                "SELECT chapter_site_id FROM chapters WHERE novel_id = ?",
+                (novel_id,),
+            ).fetchall()
+        }
+        pending = [
+            (site_id, number, title[:500])
+            for site_id, number, title in chapters
+            if site_id and site_id not in existing
+        ]
+        inserted = 0
+        for start in range(0, len(pending), 200):
+            chunk = pending[start : start + 200]
+            placeholders = ", ".join(["(?, ?, ?, ?, '', ?, ?, ?)"] * len(chunk))
+            params: list[Any] = []
+            for site_id, number, title in chunk:
+                params.extend([novel_id, site_id, number, title, now, STATUS_PENDING, STATUS_PENDING])
+            conn.execute(
+                f"""
+                INSERT INTO chapters
+                    (novel_id, chapter_site_id, chapter_number, title, content,
+                     crawled_at, crawl_status, tts_status)
+                VALUES {placeholders}
+                """,
+                params,
+            )
+            inserted += len(chunk)
+        return inserted
+
+
 def chapter_has_content(content: str, min_len: int = 50) -> bool:
     """True nếu content đủ dài để coi là đã cào xong."""
     return bool(content and len(content.strip()) > min_len)

@@ -66,6 +66,7 @@ export function DashboardPage() {
     };
 
     const handleSubmit = (values: NovelFormValues) => {
+        const chapterRange = values.chapterRange?.trim();
         const body = {
             url: values.url.trim(),
             title: values.title.trim(),
@@ -88,9 +89,12 @@ export function DashboardPage() {
         }
 
         createMutation.mutate(body, {
-            onSuccess: () => {
-                message.success('Đã thêm truyện');
+            onSuccess: (novel) => {
+                message.success(chapterRange ? 'Đã thêm truyện. Mở tác vụ cào.' : 'Đã thêm truyện');
                 closeForm();
+                if (chapterRange) {
+                    navigate(`/crawl?novelId=${novel.id}&chapterRange=${encodeURIComponent(chapterRange)}`);
+                }
             },
             onError: (err) => message.error(getErrorMessage(err, 'Thêm truyện thất bại')),
         });

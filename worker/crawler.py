@@ -62,6 +62,7 @@ from db import (
     STATUS_PENDING,
     chapter_has_content,
     ensure_chapter_record,
+    ensure_chapter_records,
     get_chapters_for_novel,
     get_latest_novel,
     get_novel_by_id,
@@ -1078,6 +1079,72 @@ def _write_crawl_error_log(exc: BaseException) -> Path:
         f.write(f"\n--- {datetime.now(timezone.utc).isoformat()} ---\n")
         traceback.print_exception(type(exc), exc, exc.__traceback__, file=f)
     return log_path
+
+
+def preview_novel(novel_url: str) -> dict:
+    """Đọc metadata bằng Playwright headless, rồi lưu truyện và các chương chưa có nội dung."""
+    novel_url = _normalize_novel_url(novel_url)
+    if "sangtacviet.com" not in novel_url:
+        raise ValueError("URL phải thuộc sangtacviet.com")
+    _parse_novel_url(novel_url)
+
+    state_path = Path(BROWSER_STATE_PATH)
+    context_kwargs: dict = {}
+    if state_path.is_file():
+        context_kwargs["storage_state"] = str(state_path)
+
+    with sync_playwright() as playwright:
+        launch_args = build_stealth_launch_kwargs({"headless": True}, channel=BROWSER_CHANNEL)
+        browser = playwright.chromium.launch(**launch_args)
+        try:
+            context = browser.new_context(
+                **build_stealth_context_kwargs(
+                    dict(context_kwargs),
+                    locale=BROWSER_LOCALE,
+                    timezone=BROWSER_TIMEZONE,
+                )
+            )
+            page = context.new_page()
+            apply_stealth(
+                context,
+                page,
+                enabled=BROWSER_STEALTH,
+                locale=BROWSER_LOCALE,
+                headless=True,
+                channel=BROWSER_CHANNEL,
+            )
+            page.set_default_timeout(45_000)
+            page.goto(novel_url, wait_until="domcontentloaded")
+            page.wait_for_timeout(1500)
+            _select_vietnamese(page)
+
+            title = _text_or_empty(page, SELECTORS["book_title"])
+            author = _text_or_empty(page, SELECTORS["book_author"])
+            summary = _text_or_empty(page, SELECTORS["book_summary"])
+            if not title:
+                raise RuntimeError(
+                    "Không đọc được tên truyện. Trang có thể đang chặn hoặc cần captcha."
+                )
+
+            chapters, vip_count = _get_chapter_list(page, novel_url)
+        finally:
+            browser.close()
+
+    init_db()
+    novel_id = upsert_novel(novel_url, title, author, summary)
+    ensure_chapter_records(
+        novel_id,
+        [(chapter.site_id, index, chapter.title) for index, chapter in enumerate(chapters, start=1)],
+    )
+    return {
+        "url": novel_url,
+        "novelId": novel_id,
+        "title": title,
+        "author": author,
+        "summary": summary,
+        "chapterCount": len(chapters),
+        "vipCount": vip_count,
+    }
 
 
 def main() -> None:
