@@ -1,4 +1,4 @@
 # Agent Instructions
-- Before exploring crawl, TTS, or Drive, read the matching project skill: `.cursor/skills/crawler-workflow`, `.cursor/skills/tts-workflow`, or `.cursor/skills/drive-workflow`.
+- Before exploring crawl, TTS, or Drive, read the matching project skill in `.agents/skills/` (chosen path for Cursor and the harness): `.agents/skills/crawler-workflow`, `.agents/skills/tts-workflow`, or `.agents/skills/drive-workflow`. Cursor also accepts the equivalent `.cursor/skills/` path — read whichever holds the skill.
 - If a change makes a fact in that skill false, patch only the stale bullet or map row and append one changelog line. Do not rewrite the skill. Leave it unchanged when the contract is still true.
 - Codebase discovery stays on Codebase Memory MCP; route large shell/search/log/fetch output through context-mode MCP per `.cursor/rules/context-mode.mdc`.

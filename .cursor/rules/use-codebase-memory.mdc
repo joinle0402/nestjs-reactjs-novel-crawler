@@ -10,12 +10,16 @@ Namespace: `user-codebase-memory-mcp`
 
 ## Project skills
 
+Canonical location: `.agents/skills/` — chuẩn Agent Skills, được cả Cursor và harness (DSH) tự
+nạp ở cấp project. `.cursor/skills/` là path project-level tương đương của Cursor: hai path chứa
+cùng loại nội dung, đọc path nào có skill cũng đúng.
+
 - Before exploring or modifying Crawl, read:
-  `.cursor/skills/crawler-workflow`
+  `.agents/skills/crawler-workflow` (hoặc `.cursor/skills/crawler-workflow`)
 - Before exploring or modifying TTS, read:
-  `.cursor/skills/tts-workflow`
+  `.agents/skills/tts-workflow` (hoặc `.cursor/skills/tts-workflow`)
 - Before exploring or modifying Drive, read:
-  `.cursor/skills/drive-workflow`
+  `.agents/skills/drive-workflow` (hoặc `.cursor/skills/drive-workflow`)
 - If a change makes a skill fact false, patch only the stale bullet/map row and append one changelog line.
 - Do not rewrite the skill when its contract remains valid.
 
