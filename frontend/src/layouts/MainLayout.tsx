@@ -1,6 +1,14 @@
 import { useState } from 'react';
-import { Layout, Menu, Typography } from 'antd';
-import { BookOutlined, CloudDownloadOutlined, DashboardOutlined, ReadOutlined, SettingOutlined } from '@ant-design/icons';
+import { Layout, Menu, Switch, Typography, theme } from 'antd';
+import {
+    BookOutlined,
+    CloudDownloadOutlined,
+    DashboardOutlined,
+    MoonOutlined,
+    ReadOutlined,
+    SettingOutlined,
+    SunOutlined,
+} from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BottomPlayer } from '@/features/audio/BottomPlayer.tsx';
 import { useAudioPlayer } from '@/features/audio/AudioPlayerContext.tsx';
@@ -10,6 +18,7 @@ import { isActiveCrawlJob } from '@/features/crawl/api/crawlApi.ts';
 import { useCrawlJobWatch } from '@/features/crawl/hooks/useCrawlQueries.ts';
 import { isActiveDriveJob } from '@/features/drive/api/driveApi.ts';
 import { useDriveJobWatch } from '@/features/drive/hooks/useDriveQueries.ts';
+import { useThemeMode } from '@/shared/theme/useThemeMode.ts';
 
 const { Sider, Content } = Layout;
 
@@ -17,6 +26,8 @@ export function MainLayout() {
     const [collapsed, setCollapsed] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
+    const { mode, toggle } = useThemeMode();
+    const { token } = theme.useToken();
     const { track } = useAudioPlayer();
     const jobQuery = useTtsJobWatch();
     const jobActive = isActiveTtsJob(jobQuery.data);
@@ -53,7 +64,7 @@ export function MainLayout() {
                 width={220}
                 theme="light"
                 style={{
-                    borderRight: '1px solid #f0f0f0',
+                    borderRight: `1px solid ${token.colorBorderSecondary}`,
                     height: '100vh',
                     position: 'sticky',
                     top: 0,
@@ -68,7 +79,7 @@ export function MainLayout() {
                             gap: 8,
                             padding: collapsed ? '16px 0' : '16px 20px',
                             justifyContent: collapsed ? 'center' : 'flex-start',
-                            borderBottom: '1px solid #f0f0f0',
+                            borderBottom: `1px solid ${token.colorBorderSecondary}`,
                         }}
                     >
                         <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'inherit' }}>
@@ -137,13 +148,37 @@ export function MainLayout() {
                             },
                         ]}
                     />
+
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '12px 20px',
+                            justifyContent: collapsed ? 'center' : 'flex-start',
+                        }}
+                    >
+                        <Switch
+                            size="small"
+                            checked={mode === 'dark'}
+                            onChange={toggle}
+                            checkedChildren={<MoonOutlined />}
+                            unCheckedChildren={<SunOutlined />}
+                            aria-label="Chuyển giao diện tối/sáng"
+                        />
+                        {!collapsed ? (
+                            <Typography.Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                                Giao diện tối
+                            </Typography.Text>
+                        ) : null}
+                    </div>
                 </div>
             </Sider>
 
             <Layout>
                 <Content
                     className={track ? 'layout-with-player' : jobActive || crawlActive || driveActive ? 'layout-with-tts' : undefined}
-                    style={{ padding: 16, background: '#f5f5f5', minHeight: '100vh' }}
+                    style={{ padding: 16, background: token.colorBgLayout, minHeight: '100vh' }}
                 >
                     <Outlet />
                 </Content>

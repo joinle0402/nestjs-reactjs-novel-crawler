@@ -1,8 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ConfigProvider } from 'antd';
-import viVN from 'antd/locale/vi_VN';
+import { ThemeModeProvider } from '@/shared/theme/ThemeModeProvider.tsx';
+import { AppThemeProvider } from '@/shared/theme/AppThemeProvider.tsx';
 import App from './app/App.tsx';
 import './app/app.css';
 
@@ -17,10 +17,12 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
-        <ConfigProvider locale={viVN}>
-            <QueryClientProvider client={queryClient}>
-                <App />
-            </QueryClientProvider>
-        </ConfigProvider>
+        <ThemeModeProvider>
+            <AppThemeProvider>
+                <QueryClientProvider client={queryClient}>
+                    <App />
+                </QueryClientProvider>
+            </AppThemeProvider>
+        </ThemeModeProvider>
     </StrictMode>,
 );
