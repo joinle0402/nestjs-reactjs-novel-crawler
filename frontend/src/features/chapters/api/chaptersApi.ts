@@ -57,6 +57,7 @@ export type PaginatedChapters = {
 export type ListChaptersParams = {
     page?: number;
     limit?: number;
+    q?: string;
     crawlStatus?: JobStatus;
     ttsStatus?: JobStatus;
     hasMp3?: boolean;

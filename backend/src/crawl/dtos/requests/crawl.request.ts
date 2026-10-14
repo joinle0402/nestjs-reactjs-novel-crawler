@@ -52,8 +52,8 @@ export class ListCrawlJobsQuery {
     @Type(() => Number)
     @IsInt()
     @Min(1)
-    @Max(100)
-    @ApiPropertyOptional({ default: 20 })
+    @Max(10000)
+    @ApiPropertyOptional({ default: 20, maximum: 10000 })
     limit?: number;
 }
 

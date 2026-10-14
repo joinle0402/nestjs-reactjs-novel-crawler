@@ -4,6 +4,7 @@ import {
     Button,
     Card,
     Empty,
+    Input,
     Modal,
     Select,
     Space,
@@ -43,8 +44,8 @@ import { useCreateCrawlJobMutation, useCurrentCrawlJobQuery } from '@/features/c
 import { isActiveDriveJob } from '@/features/drive/api/driveApi.ts';
 import { UploadDriveDrawer, type DriveRunRequest } from '@/features/drive/components/UploadDriveDrawer.tsx';
 import { useCurrentDriveJobQuery, useDrivePreviewQuery, useSyncDrivePreviewMutation } from '@/features/drive/hooks/useDriveQueries.ts';
-
-const PAGE_SIZE = 12;
+import { ListPagination } from '@/shared/ui/ListPagination.tsx';
+import { isRowActionTarget, pageLimitParam, parsePageLimit, tableScroll } from '@/shared/ui/listPagination.ts';
 
 const { CheckableTag } = Tag;
 
@@ -116,6 +117,14 @@ export function NovelDetailPage() {
     const deleteMutation = useDeleteChapterMutation();
 
     const page = Math.max(1, Number(searchParams.get('page') ?? 1) || 1);
+    const limit = parsePageLimit(searchParams.get('limit'));
+    const q = searchParams.get('q') ?? '';
+    const [titleQuery, setTitleQuery] = useState(q);
+    const [trackedQ, setTrackedQ] = useState(q);
+    if (trackedQ !== q) {
+        setTrackedQ(q);
+        setTitleQuery(q);
+    }
     const crawlStatus = readStatusParam(searchParams.get('crawlStatus'));
     const ttsStatus = readStatusParam(searchParams.get('ttsStatus'));
     const onDrive = readBooleanParam(searchParams.get('onDrive'));
@@ -123,12 +132,13 @@ export function NovelDetailPage() {
     const chapterParams: ListChaptersParams = useMemo(
         () => ({
             page,
-            limit: PAGE_SIZE,
+            limit,
+            q: q.trim() || undefined,
             crawlStatus,
             ttsStatus,
             onDrive,
         }),
-        [page, crawlStatus, ttsStatus, onDrive],
+        [page, limit, q, crawlStatus, ttsStatus, onDrive],
     );
     const driveChecked = drivePreviewQuery.data?.driveChecked ?? false;
     const driveFolderId = drivePreviewQuery.data?.driveFolderId ?? null;
@@ -201,6 +211,26 @@ export function NovelDetailPage() {
         setRunRequest(null);
         setDriveRequest(null);
     }, [novelId]);
+
+    useEffect(() => {
+        const trimmed = titleQuery.trim();
+        if (trimmed === q) {
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                if (trimmed) {
+                    next.set('q', trimmed);
+                } else {
+                    next.delete('q');
+                }
+                next.delete('page');
+                return next;
+            });
+        }, 300);
+        return () => window.clearTimeout(timer);
+    }, [q, setSearchParams, titleQuery]);
 
     const updateFilters = (patch: Record<string, string | undefined>) => {
         const next = new URLSearchParams(searchParams);
@@ -311,7 +341,11 @@ export function NovelDetailPage() {
             title: 'Chương',
             dataIndex: 'title',
             ellipsis: true,
-            render: (title: string, chapter) => <Link to={`/novels/${novelId}/chapters/${chapter.id}`}>{title}</Link>,
+            render: (title: string, chapter) => (
+                <Link className="chapter-title-link" to={`/novels/${novelId}/chapters/${chapter.id}`}>
+                    {title}
+                </Link>
+            ),
         },
         {
             title: 'Crawl',
@@ -538,6 +572,14 @@ export function NovelDetailPage() {
                 }
             >
                 <Space wrap style={{ marginBottom: 12 }}>
+                    <Input.Search
+                        allowClear
+                        placeholder="Lọc theo tên chương"
+                        style={{ width: 220 }}
+                        value={titleQuery}
+                        maxLength={200}
+                        onChange={(event) => setTitleQuery(event.target.value)}
+                    />
                     <Select
                         allowClear
                         placeholder="Lọc crawl"
@@ -594,50 +636,65 @@ export function NovelDetailPage() {
                         </Button>
                     </Empty>
                 ) : (
-                    <Table<ChapterListItem>
-                        rowKey="id"
-                        size="small"
-                        columns={columns}
-                        dataSource={chaptersQuery.data?.data}
-                        loading={chaptersQuery.isFetching}
-                        rowSelection={{
-                            selectedRowKeys: [...selectedChapters.keys()],
-                            preserveSelectedRowKeys: true,
-                            onChange: (keys, rows) => {
-                                setSelectedChapters((current) => {
-                                    const next = new Map<number, number>();
-                                    const fromPage = new Map(rows.map((row) => [row.id, row.chapterNumber]));
-                                    for (const key of keys) {
-                                        const id = Number(key);
-                                        const chapterNumber = fromPage.get(id) ?? current.get(id);
-                                        if (chapterNumber != null) {
-                                            next.set(id, chapterNumber);
+                    <>
+                        <Table<ChapterListItem>
+                            rowKey="id"
+                            size="small"
+                            columns={columns}
+                            dataSource={chaptersQuery.data?.data}
+                            loading={chaptersQuery.isFetching}
+                            rowSelection={{
+                                selectedRowKeys: [...selectedChapters.keys()],
+                                preserveSelectedRowKeys: true,
+                                onChange: (keys, rows) => {
+                                    setSelectedChapters((current) => {
+                                        const next = new Map<number, number>();
+                                        const fromPage = new Map(rows.map((row) => [row.id, row.chapterNumber]));
+                                        for (const key of keys) {
+                                            const id = Number(key);
+                                            const chapterNumber = fromPage.get(id) ?? current.get(id);
+                                            if (chapterNumber != null) {
+                                                next.set(id, chapterNumber);
+                                            }
                                         }
+                                        return next;
+                                    });
+                                },
+                            }}
+                            pagination={false}
+                            onRow={(chapter) => ({
+                                style: { cursor: 'pointer' },
+                                onClick: (event) => {
+                                    if (isRowActionTarget(event.target)) {
+                                        return;
                                     }
-                                    return next;
-                                });
-                            },
-                        }}
-                        pagination={{
-                            current: chaptersQuery.data?.meta.page ?? page,
-                            pageSize: PAGE_SIZE,
-                            total: chaptersQuery.data?.meta.total ?? 0,
-                            showSizeChanger: false,
-                            showTotal: (total) => `${total} chương`,
-                        }}
-                        onChange={(pagination) => updateFilters({ page: String(pagination.current ?? 1) })}
-                        onRow={(chapter) => ({
-                            style: { cursor: 'pointer' },
-                            onClick: (event) => {
-                                const target = event.target as HTMLElement;
-                                if (target.closest('a, button, .ant-checkbox, .ant-checkbox-wrapper')) {
+                                    setSelectedChapters((current) => {
+                                        const next = new Map(current);
+                                        if (next.has(chapter.id)) {
+                                            next.delete(chapter.id);
+                                        } else {
+                                            next.set(chapter.id, chapter.chapterNumber);
+                                        }
+                                        return next;
+                                    });
+                                },
+                            })}
+                            scroll={tableScroll(1000, limit)}
+                        />
+                        <ListPagination
+                            current={chaptersQuery.data?.meta.page ?? page}
+                            pageSize={limit}
+                            total={chaptersQuery.data?.meta.total ?? 0}
+                            totalLabel={(total) => `${total} chương`}
+                            onChange={(nextPage, nextSize) => {
+                                if (nextSize !== limit) {
+                                    updateFilters({ limit: pageLimitParam(nextSize) });
                                     return;
                                 }
-                                navigate(`/novels/${novelId}/chapters/${chapter.id}`);
-                            },
-                        })}
-                        scroll={{ x: 1000 }}
-                    />
+                                updateFilters({ page: nextPage > 1 ? String(nextPage) : undefined });
+                            }}
+                        />
+                    </>
                 )}
             </Card>
 

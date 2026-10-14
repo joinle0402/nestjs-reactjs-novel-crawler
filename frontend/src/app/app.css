@@ -14,6 +14,42 @@ a {
     color: inherit;
 }
 
+.chapter-title-link:hover {
+    color: #1677ff;
+}
+
+.list-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.list-pagination__total {
+    color: rgba(0, 0, 0, 0.45);
+}
+
+.list-pagination__pages {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.list-pagination__pages .ant-btn {
+    min-width: 32px;
+}
+
+.list-pagination__ellipsis {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    color: rgba(0, 0, 0, 0.45);
+}
+
 .chapter-content {
     font-size: 1.125rem;
     line-height: 1.85;

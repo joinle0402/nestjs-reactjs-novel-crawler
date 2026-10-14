@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { JobStatus } from 'src/common/enums/job-status.enum';
 
 function toOptionalBoolean(value: unknown): boolean | undefined {
@@ -25,9 +25,15 @@ export class ListChaptersQuery {
     @Type(() => Number)
     @IsInt()
     @Min(1)
-    @Max(200)
-    @ApiPropertyOptional({ default: 15, maximum: 200 })
+    @Max(10000)
+    @ApiPropertyOptional({ default: 15, maximum: 10000 })
     limit?: number;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(200)
+    @ApiPropertyOptional({ description: 'Lọc theo tên chương' })
+    q?: string;
 
     @IsOptional()
     @IsEnum(JobStatus)

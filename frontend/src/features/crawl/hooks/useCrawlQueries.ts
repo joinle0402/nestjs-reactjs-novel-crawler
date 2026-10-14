@@ -28,7 +28,7 @@ export const crawlKeys = {
     all: ['crawl'] as const,
     current: ['crawl', 'current'] as const,
     lookup: (url: string) => ['crawl', 'lookup', url] as const,
-    list: (status: string, page: number) => ['crawl', 'jobs', status, page] as const,
+    list: (status: string, page: number, limit: number) => ['crawl', 'jobs', status, page, limit] as const,
     job: (id: number) => ['crawl', 'job', id] as const,
     chapters: (id: number, status: string) => ['crawl', 'chapters', id, status] as const,
 };
@@ -105,10 +105,10 @@ export function useCrawlLookupQuery(url: string) {
     });
 }
 
-export function useCrawlJobsQuery(status: CrawlJobStatus | '', page: number) {
+export function useCrawlJobsQuery(status: CrawlJobStatus | '', page: number, limit: number) {
     return useQuery({
-        queryKey: crawlKeys.list(status, page),
-        queryFn: () => listCrawlJobs({ status: status || undefined, page, limit: 20 }),
+        queryKey: crawlKeys.list(status, page, limit),
+        queryFn: () => listCrawlJobs({ status: status || undefined, page, limit }),
     });
 }
 

@@ -58,6 +58,11 @@ export class ChaptersService {
             .where('chapter.novelId = :novelId', { novelId })
             .orderBy('chapter.chapterNumber', 'ASC');
 
+        const titleQuery = query.q?.trim();
+        if (titleQuery) {
+            const escaped = titleQuery.replace(/[\\%_]/g, (char) => `\\${char}`);
+            qb.andWhere('chapter.title LIKE :titleQuery', { titleQuery: `%${escaped}%` });
+        }
         if (query.crawlStatus) {
             qb.andWhere('chapter.crawlStatus = :crawlStatus', { crawlStatus: query.crawlStatus });
         }

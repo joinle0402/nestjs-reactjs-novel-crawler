@@ -12,6 +12,8 @@ import {
 import { NovelFormModal, type NovelFormValues } from '@/features/novels/components/NovelFormModal.tsx';
 import type { NovelListItem } from '@/features/novels/api/novelsApi.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
+import { ListPagination } from '@/shared/ui/ListPagination.tsx';
+import { DEFAULT_PAGE_LIMIT, isRowActionTarget, tableScroll } from '@/shared/ui/listPagination.ts';
 
 function statusOf(done: number, failed: number, total: number): { color: string; label: string; running: boolean } {
     if (failed > 0) {
@@ -35,6 +37,9 @@ export function DashboardPage() {
     const [search, setSearch] = useState('');
     const [formOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<NovelListItem | null>(null);
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(DEFAULT_PAGE_LIMIT);
+    const [selectedNovelIds, setSelectedNovelIds] = useState<number[]>([]);
 
     const filtered = useMemo(() => {
         if (!data) {
@@ -49,6 +54,13 @@ export function DashboardPage() {
                 novel.title.toLowerCase().includes(q) || (novel.author ?? '').toLowerCase().includes(q),
         );
     }, [data, search]);
+
+    const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+    const currentPage = Math.min(page, pageCount);
+    const pageRows = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return filtered.slice(start, start + pageSize);
+    }, [currentPage, filtered, pageSize]);
 
     const openCreate = () => {
         setEditing(null);
@@ -126,7 +138,7 @@ export function DashboardPage() {
             key: 'STT',
             width: 60,
             align: 'right',
-            render: (_text, _record, index) => index + 1,
+            render: (_text, _record, index) => (currentPage - 1) * pageSize + index + 1,
         },
         {
             title: 'Truyện',
@@ -246,7 +258,10 @@ export function DashboardPage() {
                             allowClear
                             placeholder="Tìm theo tên / tác giả"
                             value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            onChange={(e) => {
+                                setSearch(e.target.value);
+                                setPage(1);
+                            }}
                             style={{ width: 240 }}
                         />
                         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
@@ -262,23 +277,45 @@ export function DashboardPage() {
                         </Button>
                     </Empty>
                 ) : (
-                    <Table<NovelListItem>
-                        rowKey="id"
-                        size="small"
-                        columns={columns}
-                        dataSource={filtered}
-                        pagination={
-                            filtered.length > 20
-                                ? { pageSize: 20, showSizeChanger: false, showTotal: (total) => `${total} truyện` }
-                                : false
-                        }
-                        locale={{ emptyText: <Empty description="Không có truyện khớp tìm kiếm." /> }}
-                        onRow={(novel) => ({
-                            style: { cursor: 'pointer' },
-                            onClick: () => navigate(`/novels/${novel.id}`),
-                        })}
-                        scroll={{ x: 700 }}
-                    />
+                    <>
+                        <Table<NovelListItem>
+                            rowKey="id"
+                            size="small"
+                            columns={columns}
+                            dataSource={pageRows}
+                            rowSelection={{
+                                selectedRowKeys: selectedNovelIds,
+                                preserveSelectedRowKeys: true,
+                                onChange: (keys) => setSelectedNovelIds(keys.map(Number)),
+                            }}
+                            pagination={false}
+                            locale={{ emptyText: <Empty description="Không có truyện khớp tìm kiếm." /> }}
+                            onRow={(novel) => ({
+                                style: { cursor: 'pointer' },
+                                onClick: (event) => {
+                                    if (isRowActionTarget(event.target)) {
+                                        return;
+                                    }
+                                    navigate(`/novels/${novel.id}`);
+                                },
+                            })}
+                            scroll={tableScroll(700, pageSize)}
+                        />
+                        <ListPagination
+                            current={currentPage}
+                            pageSize={pageSize}
+                            total={filtered.length}
+                            totalLabel={(total) => `${total} truyện`}
+                            onChange={(nextPage, nextSize) => {
+                                if (nextSize !== pageSize) {
+                                    setPageSize(nextSize);
+                                    setPage(1);
+                                    return;
+                                }
+                                setPage(nextPage);
+                            }}
+                        />
+                    </>
                 )}
             </Card>
 
