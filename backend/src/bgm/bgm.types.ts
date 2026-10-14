@@ -7,4 +7,6 @@ export type BgmTrack = {
 
 export type BgmCatalog = {
     tracks: BgmTrack[];
+    /** Tên file gốc đã nhập một lần. Xóa track không nhập lại. */
+    importedSources?: string[];
 };

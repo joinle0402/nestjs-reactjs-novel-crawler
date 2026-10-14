@@ -5,6 +5,7 @@ import type { Request, Response } from 'express';
 import { streamAudioFile } from 'src/audios/stream-audio-file';
 import { BgmService, type UploadedAudio } from './bgm.service';
 import { BgmTrackResponse } from './dtos/bgm-track.response';
+import { DeleteBgmTracksRequest } from './dtos/delete-bgm-tracks.request';
 
 @ApiTags('BGM')
 @Controller('bgm')
@@ -25,6 +26,13 @@ export class BgmController {
     @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 40 * 1024 * 1024 } }))
     create(@Body('name') name: string, @UploadedFile() file: UploadedAudio): Promise<BgmTrackResponse> {
         return this.bgmService.create(typeof name === 'string' ? name : '', file);
+    }
+
+    @Post('bulk-delete')
+    @HttpCode(204)
+    @ApiOperation({ summary: 'Xóa nhiều nhạc nền' })
+    async removeMany(@Body() body: DeleteBgmTracksRequest): Promise<void> {
+        await this.bgmService.removeMany(body.ids);
     }
 
     @Delete(':id')

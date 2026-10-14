@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
 import { getChapter, getChapterAudioUrl, getChapterByNumber, type ChapterDetail, type ChapterNeighbor } from '@/features/chapters/api/chaptersApi.ts';
 import { getBgmAudioUrl } from '@/features/bgm/api/bgmApi.ts';
 import { getPlayback, upsertPlayback } from '@/features/novels/api/novelsApi.ts';
@@ -35,6 +35,7 @@ type AudioPlayerContextValue = {
     seek: (seconds: number) => void;
     setRate: (rate: number) => void;
     setBgmId: (id: string | null) => void;
+    selectDefaultBgm: (ids: string[]) => void;
     playPrev: () => Promise<void>;
     playNext: () => Promise<void>;
     stop: () => void;
@@ -45,14 +46,22 @@ const AudioPlayerContext = createContext<AudioPlayerContextValue | null>(null);
 const PLAYBACK_SAVE_INTERVAL_MS = 8_000;
 const RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 const BGM_STORAGE_KEY = 'nc-bgm-id';
+const BGM_OFF = 'off';
 const BGM_VOLUME = 0.13;
 
-function readStoredBgmId(): string | null {
+function readStoredBgm(): { id: string | null; explicitOff: boolean } {
     try {
-        const value = localStorage.getItem(BGM_STORAGE_KEY)?.trim();
-        return value ? value : null;
+        const value = localStorage.getItem(BGM_STORAGE_KEY);
+        if (value == null) {
+            return { id: null, explicitOff: false };
+        }
+        const trimmed = value.trim();
+        if (!trimmed || trimmed === BGM_OFF) {
+            return { id: null, explicitOff: true };
+        }
+        return { id: trimmed, explicitOff: false };
     } catch {
-        return null;
+        return { id: null, explicitOff: false };
     }
 }
 
@@ -89,7 +98,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const bgmRef = useRef<HTMLAudioElement | null>(null);
     const trackRef = useRef<PlayableTrack | null>(null);
     const rateRef = useRef(1.5);
-    const bgmIdRef = useRef<string | null>(readStoredBgmId());
+    const storedBgm = readStoredBgm();
+    const bgmIdRef = useRef<string | null>(storedBgm.id);
+    const explicitOffRef = useRef(storedBgm.explicitOff);
     const lastSavedAtRef = useRef(0);
     const pendingResumeRef = useRef<number | null>(null);
     const syncBgmRef = useRef<(playing: boolean) => void>(() => undefined);
@@ -402,14 +413,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
     const setBgmId = (id: string | null) => {
         const next = id && id.trim() ? id : null;
+        explicitOffRef.current = !next;
         bgmIdRef.current = next;
         setBgmIdState(next);
         try {
-            if (next) {
-                localStorage.setItem(BGM_STORAGE_KEY, next);
-            } else {
-                localStorage.removeItem(BGM_STORAGE_KEY);
-            }
+            localStorage.setItem(BGM_STORAGE_KEY, next ?? BGM_OFF);
         } catch {
             // ignore storage failures
         }
@@ -420,6 +428,21 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         const voice = audioRef.current;
         const playing = Boolean(voice && trackRef.current && !voice.paused && !voice.ended);
         syncBgm(playing);
+    };
+
+    const selectDefaultBgm = (ids: string[]) => {
+        if (explicitOffRef.current) {
+            return;
+        }
+        const current = bgmIdRef.current;
+        if (current && ids.includes(current)) {
+            return;
+        }
+        const first = ids.find((id) => id.trim()) ?? null;
+        if (!first) {
+            return;
+        }
+        setBgmId(first);
     };
 
     const playPrev = async () => {
@@ -482,6 +505,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         seek,
         setRate,
         setBgmId,
+        selectDefaultBgm,
         playPrev,
         playNext,
         stop,

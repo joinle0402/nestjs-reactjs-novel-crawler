@@ -33,7 +33,7 @@ Crawl may call TTS when `run_tts=True`. Crawl job rules live in the `crawler-wor
 - `_normalize_tts_text` only strips tags, URLs, control characters, emoji, and known junk. Do not rewrite, summarize, or paraphrase the story.
 - VieNeu packs sentences with quote-aware semantics: a sentence adjacent to quoted dialogue joins the chunk ignoring the sentence cap (char budget `VIENEU_CHUNK_*` stays the hard limit); `VIENEU_CHUNK_PAUSE_MS` (350) is inserted between chunks. `_prepare_vieneu_speech` only adjusts pauses and punctuation. Edge-TTS still uses `_split_text_into_chunks` and `TTS_CHUNK_SIZE`.
 - Chunking needs ffmpeg. Without ffmpeg, still write the voice MP3. Mixing a library track at Drive upload also needs ffmpeg; if ffmpeg is missing that upload job fails and the voice file stays as it is.
-- MP3 generation writes voice only. `use_bgm` on a job is ignored. The player layers a track from `worker/bgm/` beside the voice. Drive upload mixes the chosen track into a temp copy.
+- MP3 generation writes voice only. `use_bgm` on a job is ignored. The player layers a track from `worker/bgm/` beside the voice; the selector under the bottom bar defaults to the first library track unless the listener turned background music off. Drive upload mixes the chosen track into a temp copy.
 - Stopping or interrupting resets processing chapters so a later run can resume (`reset_processing_tts_chapters`).
 
 API surface on `TtsController`: `getSettings`, `updateSettings`, `savedSample`, `sample`, `audioFile`, `preview`, `current`, `logs`, `start`, `stop`.
@@ -75,3 +75,4 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-10-01 — VieNeu runs `VIENEU_BACKEND=torch` via `worker/.env` (RTX GPU, ~8x onnx speed); torch backend needs `transformers` + CUDA torch wheel in `.venv-vieneu`.
 - 2026-10-01 — VieNeu packing now quote-aware (dialogue glue drops the sentence cap, char budget governs); `VIENEU_CHUNK_PAUSE_MS` 250→350. Reference voice `hoaimy.wav` regenerated from edge-tts (26.9s sample).
 - 2026-10-14 — Generation writes voice-only MP3. Library tracks play beside the voice; Drive mixes the selected track before upload.
+- 2026-10-14 — Player BGM selector sits under the bottom bar and defaults to the first library track. `Just_Stay_Aakash_Gandhi.mp3` is imported into `worker/bgm/catalog.json` once.

@@ -431,6 +431,18 @@ a {
     justify-content: flex-end;
 }
 
+.bottom-player__bgm {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.bottom-player__bgm-icon {
+    color: var(--link-hover);
+}
+
 @media (max-width: 768px) {
     .bottom-player {
         left: 0 !important;
@@ -444,10 +456,14 @@ a {
     .bottom-player__controls {
         justify-content: space-between;
     }
+
+    .bottom-player__bgm {
+        flex-wrap: wrap;
+    }
 }
 
 .layout-with-player {
-    padding-bottom: 120px !important;
+    padding-bottom: 164px !important;
 }
 
 .layout-with-tts {

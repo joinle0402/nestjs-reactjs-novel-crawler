@@ -1,22 +1,27 @@
-import { DeleteOutlined, PauseCircleOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
-import { Button, Card, Form, Input, Popconfirm, Space, Typography, Upload, message } from 'antd';
-import { useRef, useState } from 'react';
+import { DeleteOutlined, PauseCircleOutlined, PlayCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Empty, Input, Modal, Space, Table, Tooltip, Typography, message } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { useMemo, useRef, useState } from 'react';
 import { getBgmAudioUrl, type BgmTrack } from '@/features/bgm/api/bgmApi.ts';
-import { useBgmTracksQuery, useCreateBgmTrackMutation, useDeleteBgmTrackMutation } from '@/features/bgm/hooks/useBgmQueries.ts';
+import { BgmCreateDrawer } from '@/features/bgm/components/BgmCreateDrawer.tsx';
+import { useBgmTracksQuery, useDeleteBgmTrackMutation, useDeleteBgmTracksMutation } from '@/features/bgm/hooks/useBgmQueries.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
-
-type AddForm = {
-    name: string;
-};
+import { ListPagination } from '@/shared/ui/ListPagination.tsx';
+import { DEFAULT_PAGE_LIMIT, isRowActionTarget } from '@/shared/ui/listPagination.ts';
+import { fitTableScroll, useTableScrollFit } from '@/shared/ui/useTableScrollFit.ts';
 
 export function BgmPage() {
-    const [form] = Form.useForm<AddForm>();
-    const [file, setFile] = useState<File | null>(null);
+    const [search, setSearch] = useState('');
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(DEFAULT_PAGE_LIMIT);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [drawerOpen, setDrawerOpen] = useState(false);
     const [playingId, setPlayingId] = useState<string | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const { areaRef, bodyHeight } = useTableScrollFit();
     const tracksQuery = useBgmTracksQuery();
-    const createMutation = useCreateBgmTrackMutation();
     const deleteMutation = useDeleteBgmTrackMutation();
+    const deleteManyMutation = useDeleteBgmTracksMutation();
 
     const stopPreview = () => {
         const audio = audioRef.current;
@@ -45,104 +50,212 @@ export function BgmPage() {
         });
     };
 
-    const onFinish = async (values: AddForm) => {
-        if (!file) {
-            message.error('Chọn file audio');
-            return;
+    const filtered = useMemo(() => {
+        const tracks = tracksQuery.data ?? [];
+        const query = search.trim().toLowerCase();
+        if (!query) {
+            return tracks;
         }
-        const body = new FormData();
-        body.append('name', values.name.trim());
-        body.append('file', file);
-        try {
-            await createMutation.mutateAsync(body);
-            message.success('Đã thêm nhạc nền');
-            form.resetFields();
-            setFile(null);
-        } catch (error) {
-            message.error(getErrorMessage(error, 'Không thêm được nhạc nền'));
-        }
+        return tracks.filter((track) => track.name.toLowerCase().includes(query));
+    }, [search, tracksQuery.data]);
+
+    const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+    const currentPage = Math.min(page, pageCount);
+    const pageRows = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return filtered.slice(start, start + pageSize);
+    }, [currentPage, filtered, pageSize]);
+
+    const confirmDelete = (track: BgmTrack) => {
+        Modal.confirm({
+            title: `Xóa "${track.name}"?`,
+            content: 'File nhạc nền sẽ bị xóa khỏi thư viện.',
+            okText: 'Xóa',
+            okType: 'danger',
+            cancelText: 'Hủy',
+            onOk: () =>
+                deleteMutation.mutateAsync(track.id).then(
+                    () => {
+                        if (playingId === track.id) {
+                            stopPreview();
+                        }
+                        setSelectedIds((current) => current.filter((id) => id !== track.id));
+                        message.success('Đã xóa nhạc nền');
+                    },
+                    (error) => {
+                        message.error(getErrorMessage(error, 'Không xóa được'));
+                        return Promise.reject(error);
+                    },
+                ),
+        });
     };
 
-    const tracks = tracksQuery.data ?? [];
+    const confirmDeleteMany = () => {
+        const ids = selectedIds;
+        Modal.confirm({
+            title: `Xóa ${ids.length} nhạc nền?`,
+            content: 'Các file đã chọn sẽ bị xóa khỏi thư viện.',
+            okText: 'Xóa',
+            okType: 'danger',
+            cancelText: 'Hủy',
+            onOk: () =>
+                deleteManyMutation.mutateAsync(ids).then(
+                    () => {
+                        if (playingId && ids.includes(playingId)) {
+                            stopPreview();
+                        }
+                        setSelectedIds([]);
+                        message.success('Đã xóa nhạc nền đã chọn');
+                    },
+                    (error) => {
+                        message.error(getErrorMessage(error, 'Không xóa được'));
+                        return Promise.reject(error);
+                    },
+                ),
+        });
+    };
+
+    const columns: ColumnsType<BgmTrack> = [
+        {
+            title: '#',
+            key: 'stt',
+            width: 60,
+            align: 'right',
+            render: (_value, _track, index) => (currentPage - 1) * pageSize + index + 1,
+        },
+        {
+            title: 'Tên',
+            dataIndex: 'name',
+            ellipsis: true,
+            render: (name: string) => <Typography.Text strong>{name}</Typography.Text>,
+        },
+        {
+            title: 'Ngày thêm',
+            dataIndex: 'createdAt',
+            width: 180,
+            render: (value: string) => (value ? new Date(value).toLocaleString() : '—'),
+        },
+        {
+            title: '',
+            key: 'actions',
+            width: 96,
+            fixed: 'right',
+            render: (_, track) => (
+                <Space size={0} onClick={(event) => event.stopPropagation()}>
+                    <Tooltip title={playingId === track.id ? 'Dừng nghe thử' : 'Nghe thử'}>
+                        <Button
+                            type="text"
+                            size="small"
+                            icon={playingId === track.id ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+                            aria-label={playingId === track.id ? 'Dừng nghe thử' : 'Nghe thử'}
+                            onClick={() => togglePreview(track)}
+                        />
+                    </Tooltip>
+                    <Tooltip title="Xóa">
+                        <Button
+                            type="text"
+                            size="small"
+                            className="row-action-delete"
+                            icon={<DeleteOutlined />}
+                            aria-label={`Xóa ${track.name}`}
+                            onClick={() => confirmDelete(track)}
+                        />
+                    </Tooltip>
+                </Space>
+            ),
+        },
+    ];
 
     return (
-        <Space orientation="vertical" size={16} style={{ width: '100%', maxWidth: 720 }}>
-            <Card title="Nhạc nền">
-                <Typography.Paragraph type="secondary">
-                    Thêm track để nghe cùng giọng đọc, hoặc trộn vào MP3 lúc upload Drive. File chương trên máy vẫn chỉ là giọng.
-                </Typography.Paragraph>
-                <Form form={form} layout="vertical" onFinish={(values) => void onFinish(values)}>
-                    <Form.Item name="name" label="Tên" rules={[{ required: true, whitespace: true, message: 'Nhập tên nhạc nền' }, { max: 80, message: 'Tối đa 80 ký tự' }]}>
-                        <Input placeholder="Ví dụ: Mưa đêm" maxLength={80} />
-                    </Form.Item>
-                    <Form.Item label="File audio" required extra="mp3, wav, ogg, m4a, flac, aac hoặc webm. Tối đa 40 MB.">
-                        <Upload
-                            accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.webm"
-                            maxCount={1}
-                            beforeUpload={(next) => {
-                                setFile(next);
-                                return false;
-                            }}
-                            onRemove={() => {
-                                setFile(null);
-                            }}
-                            fileList={
-                                file
-                                    ? [{ uid: 'bgm-file', name: file.name, status: 'done' }]
-                                    : []
-                            }
-                        >
-                            <Button icon={<UploadOutlined />}>Chọn file</Button>
-                        </Upload>
-                    </Form.Item>
-                    <Button type="primary" htmlType="submit" loading={createMutation.isPending}>
-                        Thêm nhạc nền
-                    </Button>
-                </Form>
-                <audio ref={audioRef} preload="none" />
-            </Card>
+        <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+            <Typography.Title level={4} style={{ margin: 0 }}>
+                Nhạc nền
+            </Typography.Title>
 
-            <Card title={`Thư viện (${tracks.length})`}>
-                {tracksQuery.isError ? (
-                    <Typography.Text type="danger">{getErrorMessage(tracksQuery.error, 'Không tải được danh sách')}</Typography.Text>
-                ) : tracks.length === 0 ? (
-                    <Typography.Text type="secondary">{tracksQuery.isLoading ? 'Đang tải...' : 'Chưa có nhạc nền.'}</Typography.Text>
-                ) : (
-                    <Space orientation="vertical" size={8} style={{ width: '100%' }}>
-                        {tracks.map((track) => (
-                            <div key={track.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Button
-                                    type="text"
-                                    icon={playingId === track.id ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-                                    aria-label={playingId === track.id ? 'Dừng nghe thử' : 'Nghe thử'}
-                                    onClick={() => togglePreview(track)}
-                                />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <Typography.Text strong ellipsis>
-                                        {track.name}
-                                    </Typography.Text>
-                                </div>
-                                <Popconfirm
-                                    title="Xóa nhạc nền này?"
-                                    okText="Xóa"
-                                    cancelText="Hủy"
-                                    onConfirm={() => {
-                                        if (playingId === track.id) {
-                                            stopPreview();
-                                        }
-                                        deleteMutation.mutate(track.id, {
-                                            onSuccess: () => message.success('Đã xóa nhạc nền'),
-                                            onError: (error) => message.error(getErrorMessage(error, 'Không xóa được')),
-                                        });
-                                    }}
-                                >
-                                    <Button type="text" danger icon={<DeleteOutlined />} aria-label={`Xóa ${track.name}`} />
-                                </Popconfirm>
-                            </div>
-                        ))}
+            {tracksQuery.isError ? (
+                <Alert type="error" showIcon title="Không tải được danh sách" description={getErrorMessage(tracksQuery.error)} />
+            ) : null}
+
+            <Card
+                size="small"
+                title="Thư viện"
+                extra={
+                    <Space wrap>
+                        {selectedIds.length > 0 ? (
+                            <Button danger onClick={confirmDeleteMany} loading={deleteManyMutation.isPending}>
+                                Xóa đã chọn ({selectedIds.length})
+                            </Button>
+                        ) : null}
+                        <Input.Search
+                            allowClear
+                            placeholder="Tìm theo tên"
+                            value={search}
+                            onChange={(event) => {
+                                setSearch(event.target.value);
+                                setPage(1);
+                            }}
+                            style={{ width: 220 }}
+                        />
+                        <Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawerOpen(true)}>
+                            Thêm nhạc nền
+                        </Button>
                     </Space>
+                }
+            >
+                {tracksQuery.isError ? null : !tracksQuery.isLoading && filtered.length === 0 ? (
+                    <Empty description={search.trim() ? 'Không có nhạc nền khớp tìm kiếm.' : 'Chưa có nhạc nền.'}>
+                        {search.trim() ? null : (
+                            <Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawerOpen(true)}>
+                                Thêm nhạc nền
+                            </Button>
+                        )}
+                    </Empty>
+                ) : (
+                    <div ref={areaRef}>
+                        <Table<BgmTrack>
+                            rowKey="id"
+                            size="small"
+                            columns={columns}
+                            dataSource={pageRows}
+                            loading={tracksQuery.isLoading}
+                            rowSelection={{
+                                selectedRowKeys: selectedIds,
+                                preserveSelectedRowKeys: true,
+                                onChange: (keys) => setSelectedIds(keys.map(String)),
+                            }}
+                            pagination={false}
+                            onRow={(track) => ({
+                                onClick: (event) => {
+                                    if (isRowActionTarget(event.target)) {
+                                        return;
+                                    }
+                                    setSelectedIds((current) =>
+                                        current.includes(track.id) ? current.filter((id) => id !== track.id) : [...current, track.id],
+                                    );
+                                },
+                            })}
+                            scroll={fitTableScroll(640, bodyHeight)}
+                        />
+                        <ListPagination
+                            current={currentPage}
+                            pageSize={pageSize}
+                            total={filtered.length}
+                            totalLabel={(total) => `${total} nhạc nền`}
+                            onChange={(nextPage, nextSize) => {
+                                if (nextSize !== pageSize) {
+                                    setPageSize(nextSize);
+                                    setPage(1);
+                                    return;
+                                }
+                                setPage(nextPage);
+                            }}
+                        />
+                    </div>
                 )}
             </Card>
+
+            <audio ref={audioRef} preload="none" />
+            <BgmCreateDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
         </Space>
     );
 }

@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Button, Dropdown, Select, Slider, Space, Typography } from 'antd';
 import {
     CloseOutlined,
+    CustomerServiceOutlined,
     ForwardOutlined,
     PauseCircleFilled,
     PlayCircleFilled,
@@ -51,16 +52,18 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
         stop,
         bgmId,
         setBgmId,
+        selectDefaultBgm,
     } = useAudioPlayer();
     const tracksQuery = useBgmTracksQuery(Boolean(track));
+    const tracks = tracksQuery.data ?? [];
+    const selectDefaultBgmRef = useRef(selectDefaultBgm);
+    selectDefaultBgmRef.current = selectDefaultBgm;
     useEffect(() => {
-        if (!bgmId || !tracksQuery.data) {
+        if (!track || !tracksQuery.data?.length) {
             return;
         }
-        if (!tracksQuery.data.some((item) => item.id === bgmId)) {
-            setBgmId(null);
-        }
-    }, [bgmId, tracksQuery.data]);
+        selectDefaultBgmRef.current(tracksQuery.data.map((item) => item.id));
+    }, [track, tracksQuery.data]);
     const jobQuery = useCurrentTtsJobQuery();
     const job = jobQuery.data;
     const jobActive = isActiveTtsJob(job);
@@ -127,17 +130,6 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
 
             <div className="bottom-player__controls">
                 <Space size={4}>
-                    <Select
-                        size="small"
-                        allowClear
-                        placeholder="Nhạc nền"
-                        aria-label="Nhạc nền"
-                        style={{ width: 148 }}
-                        value={bgmId ?? undefined}
-                        loading={tracksQuery.isLoading}
-                        options={(tracksQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }))}
-                        onChange={(value) => setBgmId(typeof value === 'string' ? value : null)}
-                    />
                     <Button
                         type="text"
                         icon={<BackwardOutlined />}
@@ -177,6 +169,24 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
 
                 <Button type="text" icon={<CloseOutlined />} onClick={stop} aria-label="Đóng trình nghe" />
             </div>
+                </div>
+            ) : null}
+            {track ? (
+                <div className="bottom-player__bgm">
+                    <CustomerServiceOutlined className="bottom-player__bgm-icon" />
+                    <Typography.Text type="secondary">Nhạc nền</Typography.Text>
+                    <Select
+                        size="small"
+                        allowClear
+                        placeholder={tracks.length ? 'Chọn nhạc nền' : 'Chưa có nhạc nền'}
+                        aria-label="Nhạc nền"
+                        style={{ flex: 1, maxWidth: 360 }}
+                        value={bgmId ?? undefined}
+                        loading={tracksQuery.isLoading}
+                        disabled={!tracks.length}
+                        options={tracks.map((item) => ({ value: item.id, label: item.name }))}
+                        onChange={(value) => setBgmId(typeof value === 'string' ? value : null)}
+                    />
                 </div>
             ) : null}
         </div>

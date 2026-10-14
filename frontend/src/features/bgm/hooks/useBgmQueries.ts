@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createBgmTrack, deleteBgmTrack, listBgmTracks } from '@/features/bgm/api/bgmApi.ts';
+import { createBgmTrack, deleteBgmTrack, deleteBgmTracks, listBgmTracks } from '@/features/bgm/api/bgmApi.ts';
 
 export const bgmKeys = {
     all: ['bgm'] as const,
@@ -27,6 +27,16 @@ export function useDeleteBgmTrackMutation() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: deleteBgmTrack,
+        onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: bgmKeys.all });
+        },
+    });
+}
+
+export function useDeleteBgmTracksMutation() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: deleteBgmTracks,
         onSuccess: () => {
             void queryClient.invalidateQueries({ queryKey: bgmKeys.all });
         },

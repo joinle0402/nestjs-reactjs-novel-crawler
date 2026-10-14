@@ -1,11 +1,14 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
-import { mkdir, readFile, rename, unlink, writeFile } from 'fs/promises';
+import { copyFile, mkdir, readFile, rename, stat, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 import { throwUnless } from 'src/common/utils/throw-if';
 import { resolveWorkerDir } from 'src/tts/tts-settings.service';
 import type { BgmCatalog, BgmTrack } from './bgm.types';
+
+const LEGACY_SOURCE = 'Just_Stay_Aakash_Gandhi.mp3';
+const LEGACY_ID = 'just-stay-aakash-gandhi';
 
 const AUDIO_EXTENSIONS = new Map<string, string>([
     ['.mp3', 'audio/mpeg'],
@@ -26,12 +29,16 @@ export type UploadedAudio = {
 
 @Injectable()
 export class BgmService {
+    private legacyImport: Promise<void> = Promise.resolve();
+
     async list(): Promise<BgmTrack[]> {
+        await this.ensureLegacyTrack();
         const catalog = await this.readCatalog();
-        return [...catalog.tracks].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        return [...catalog.tracks].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     }
 
     async create(name: string, file: UploadedAudio | undefined): Promise<BgmTrack> {
+        await this.ensureLegacyTrack();
         const title = name.trim().replace(/\s+/g, ' ');
         throwUnless(title.length > 0 && title.length <= 80, 'Nhập tên nhạc nền (tối đa 80 ký tự)');
         throwUnless(file && file.size > 0 && file.buffer?.length, 'Chọn file audio');
@@ -56,15 +63,26 @@ export class BgmService {
     }
 
     async remove(id: string): Promise<void> {
+        await this.removeMany([id]);
+    }
+
+    async removeMany(ids: string[]): Promise<void> {
+        await this.ensureLegacyTrack();
+        const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+        throwUnless(unique.length > 0, 'Chọn nhạc nền để xóa');
         const catalog = await this.readCatalog();
-        const track = catalog.tracks.find((item) => item.id === id);
-        throwUnless(track, 'Không tìm thấy nhạc nền', HttpStatus.NOT_FOUND);
-        catalog.tracks = catalog.tracks.filter((item) => item.id !== id);
+        const removing = catalog.tracks.filter((track) => unique.includes(track.id));
+        throwUnless(removing.length > 0, 'Không tìm thấy nhạc nền', HttpStatus.NOT_FOUND);
+        catalog.tracks = catalog.tracks.filter((track) => !unique.includes(track.id));
         await this.writeCatalog(catalog);
-        const filePath = this.safeFile(track.fileName);
-        if (filePath && existsSync(filePath)) {
-            await unlink(filePath);
-        }
+        await Promise.all(
+            removing.map(async (track) => {
+                const filePath = this.safeFile(track.fileName);
+                if (filePath && existsSync(filePath)) {
+                    await unlink(filePath);
+                }
+            }),
+        );
     }
 
     resolve(id: string): { filePath: string; contentType: string } {
@@ -115,6 +133,36 @@ export class BgmService {
         return absolute;
     }
 
+    private ensureLegacyTrack(): Promise<void> {
+        this.legacyImport = this.legacyImport.catch(() => undefined).then(() => this.importLegacyTrack());
+        return this.legacyImport;
+    }
+
+    private async importLegacyTrack(): Promise<void> {
+        const catalog = await this.readCatalog();
+        if ((catalog.importedSources ?? []).includes(LEGACY_SOURCE)) {
+            return;
+        }
+        const sourcePath = path.join(resolveWorkerDir(), LEGACY_SOURCE);
+        if (!existsSync(sourcePath)) {
+            return;
+        }
+        if (!catalog.tracks.some((track) => track.id === LEGACY_ID)) {
+            const fileName = `${LEGACY_ID}.mp3`;
+            await mkdir(this.filesDir(), { recursive: true });
+            await copyFile(sourcePath, path.join(this.filesDir(), fileName));
+            const sourceStat = await stat(sourcePath);
+            catalog.tracks.push({
+                id: LEGACY_ID,
+                name: 'Just Stay',
+                fileName,
+                createdAt: sourceStat.mtime.toISOString(),
+            });
+        }
+        catalog.importedSources = [...(catalog.importedSources ?? []), LEGACY_SOURCE];
+        await this.writeCatalog(catalog);
+    }
+
     private async readCatalog(): Promise<BgmCatalog> {
         const filePath = this.catalogFile();
         try {
@@ -126,8 +174,11 @@ export class BgmService {
     }
 
     private normalize(value: unknown): BgmCatalog {
-        const record = value && typeof value === 'object' ? (value as { tracks?: unknown }) : {};
+        const record = value && typeof value === 'object' ? (value as { tracks?: unknown; importedSources?: unknown }) : {};
         const tracks = Array.isArray(record.tracks) ? record.tracks : [];
+        const importedSources = Array.isArray(record.importedSources)
+            ? record.importedSources.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+            : [];
         const parsed: BgmTrack[] = [];
         for (const item of tracks) {
             if (!item || typeof item !== 'object') {
@@ -143,7 +194,7 @@ export class BgmService {
             }
             parsed.push({ id, name, fileName, createdAt });
         }
-        return { tracks: parsed };
+        return { tracks: parsed, importedSources };
     }
 
     private async writeCatalog(catalog: BgmCatalog): Promise<void> {

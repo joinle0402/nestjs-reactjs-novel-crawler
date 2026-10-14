@@ -13,6 +13,8 @@ export const createBgmTrack = (body: FormData) => axiosClient.post<BgmTrack>('/b
 
 export const deleteBgmTrack = (id: string) => axiosClient.delete<void>(`/bgm/${id}`);
 
+export const deleteBgmTracks = (ids: string[]) => axiosClient.post<void>('/bgm/bulk-delete', { ids });
+
 export function getBgmAudioUrl(id: string): string {
     const base = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api/v1';
     return `${base.replace(/\/$/, '')}/bgm/${id}/audio`;
