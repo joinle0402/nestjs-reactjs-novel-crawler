@@ -45,6 +45,7 @@ def _row_to_job(row: dict[str, Any]) -> dict[str, Any]:
         "current_file": row.get("current_file"),
         "failed_files": row.get("failed_files"),
         "error_message": row.get("error_message"),
+        "bgm_id": (row.get("bgm_id") or None),
     }
 
 

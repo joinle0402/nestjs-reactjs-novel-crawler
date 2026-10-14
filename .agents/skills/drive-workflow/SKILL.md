@@ -29,6 +29,7 @@ The interactive console also uploads (`worker/console/jobs.py` via `upload_novel
 - Job statuses: `pending`, `running`, `stopped`, `completed`, `failed` (`DRIVE_JOB_STATUSES`). No paused or waiting state.
 - One active drive job at a time. Enforced twice: MySQL `GET_LOCK('novel_crawler_drive_job')` inside `DriveService.insertJob`, and file lock `drive_worker.lock` + pid `drive_runner.pid` in the worker (the worker re-attaches to a live runner pid instead of spawning a second one).
 - Skip-existing is by file name inside the novel folder (`_existing_names_in_folder`, `skip_existing=True`). Folder names come from `_safe_filename(novel.title)` (shared with TTS).
+- Optional `bgmId` on start. When set, the runner mixes that library track (`worker/bgm/`) into a temp copy and uploads the mix. The chapter MP3 on disk stays voice-only. Skip-existing still uses the destination file name.
 - Stop is cooperative and lands between files: `POST /drive/jobs/stop` sets `stopped`; the runner's `_watch_stop` thread polls the job every 0.4s and raises SIGINT; the in-flight resumable upload finishes first. `mark_if_running` never overwrites `stopped`. A runner that dies while the job is still `running` is marked `failed` by `drive_worker._after_exit`.
 - Auth: `_get_service(interactive=...)`. Web paths (`drive_upload_runner`, `drive_check`) always use `interactive=False` — the token must already exist; log in once with `python worker/drive_upload.py` (opens browser, saves `token.json`). An invalid/expired refresh token deletes `token.json` and raises a clear error in non-interactive mode.
 - Config lives in `worker/config.py`: `GDRIVE_CREDENTIALS` (`client_secret.json`), `GDRIVE_TOKEN` (`token.json`), `GDRIVE_ROOT_FOLDER` (`novel-crawler-mp3`), `GDRIVE_ENABLED`, `GDRIVE_AUTO_AFTER_TTS`. The backend re-reads only these three string constants by regex (`readDriveConfig` in `drive.service.ts`).
@@ -49,6 +50,7 @@ API surface on `DriveController`: `status`, `preview` (`refresh=1` bỏ cache dr
 | OAuth login, token refresh, credentials | `_get_service`, `login` in `worker/drive_upload.py` |
 | Drive folders, skip-existing, upload loop | `_find_or_create_folder`, `_existing_names_in_folder`, `upload_mp3_files` |
 | Web preview without login prompts | `worker/drive_check.py` |
+| Mix selected BGM before upload | `mix_mp3_with_bgm` in `worker/tts.py`; `prepare_file` in `worker/drive_upload_runner.py` |
 | Chapters on-Drive filter (`onDrive` param of `GET /chapters/novel/:id`) | `getOnDriveChapterNumbers` in `DriveService` (drive_check result cached 30s, exported by `DriveModule`) |
 
 Tests matching `*.spec.ts` are excluded from the graph. Read those files directly when the change needs a test.
@@ -71,6 +73,7 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 
 - 2026-10-06 — `GET /drive/preview?refresh=1` bỏ cache; UI cột Drive dùng `existingNames`/`fileResults`, nút Đồng bộ Drive, link `(Drive)` khi có file trên Drive.
 - 2026-10-06 — Fix `drive_check.py` crash `UnicodeEncodeError` (cp1258) khi tên thư mục/file có tiếng Việt: bỏ `ensure_ascii=False`, thêm reconfigure stdout UTF-8 trên win32; trước đó drive_check luôn trả `ok:false` với truyện tên tiếng Việt.
+- 2026-10-14 — `POST /drive/jobs` accepts optional `bgmId`; the runner mixes that track into a temp MP3 before upload.
 - 2026-10-03 — Initial map: scopes, job statuses, worker chain, stop/lock/skip-existing invariants, OAuth non-interactive rule.
 - 2026-10-03 — UI overhaul: `UploadDriveDrawer` thay `UploadDriveModal` (ẩn alert đăng nhập), `DriveJobLine` bottom bar trong `BottomPlayer`, `DriveDetailDrawer` đọc `file_results` per-file (cột mới `drive_upload_jobs.file_results`), preview trả thêm `folder_id`/`existingNames`.
 - 2026-10-03 — `DriveService` export thêm `getOnDriveChapterNumbers` (drive_check cache TTL 30s); `ChaptersService.findByNovel` hỗ trợ filter `onDrive` cho UI cột Drive + pill Drive.

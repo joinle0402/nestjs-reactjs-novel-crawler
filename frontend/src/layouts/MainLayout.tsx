@@ -4,6 +4,7 @@ import {
     BookOutlined,
     CheckOutlined,
     CloudDownloadOutlined,
+    CustomerServiceOutlined,
     DashboardOutlined,
     MoonOutlined,
     ReadOutlined,
@@ -44,9 +45,11 @@ export function MainLayout() {
         ? ['settings']
         : location.pathname.startsWith('/crawl')
           ? ['crawl']
-          : isHome
-            ? ['dashboard', 'novels']
-            : [];
+          : location.pathname.startsWith('/bgm')
+            ? ['bgm']
+            : isHome
+              ? ['dashboard', 'novels']
+              : [];
 
     const goHome = (scrollToNovels = false) => {
         navigate('/');
@@ -108,6 +111,8 @@ export function MainLayout() {
                                 navigate('/settings');
                             } else if (key === 'crawl') {
                                 navigate('/crawl');
+                            } else if (key === 'bgm') {
+                                navigate('/bgm');
                             }
                         }}
                         items={[
@@ -141,6 +146,11 @@ export function MainLayout() {
                                         key: 'crawl',
                                         icon: <CloudDownloadOutlined />,
                                         label: 'Crawler',
+                                    },
+                                    {
+                                        key: 'bgm',
+                                        icon: <CustomerServiceOutlined />,
+                                        label: 'Nhạc nền',
                                     },
                                     {
                                         key: 'settings',

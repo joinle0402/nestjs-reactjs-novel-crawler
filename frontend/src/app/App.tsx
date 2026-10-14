@@ -7,6 +7,7 @@ import { ChapterReaderPage } from '@/features/chapters/pages/ChapterReaderPage.t
 import { AudioPlayerProvider } from '@/features/audio/AudioPlayerContext.tsx';
 import { TtsSettingsPage } from '@/features/tts/pages/TtsSettingsPage.tsx';
 import { CrawlPage } from '@/features/crawl/pages/CrawlPage.tsx';
+import { BgmPage } from '@/features/bgm/pages/BgmPage.tsx';
 
 function App() {
     return (
@@ -19,6 +20,7 @@ function App() {
                         <Route path="/novels/:novelId/chapters/:chapterId" element={<ChapterReaderPage />} />
                         <Route path="/settings" element={<TtsSettingsPage />} />
                         <Route path="/crawl" element={<CrawlPage />} />
+                        <Route path="/bgm" element={<BgmPage />} />
                         <Route path="/dashboard" element={<Navigate to="/" replace />} />
                         <Route path="*" element={<Result status="404" title="Không tìm thấy trang" />} />
                     </Route>

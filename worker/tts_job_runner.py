@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import signal
 import sys
 import threading
@@ -15,7 +14,6 @@ if str(WORKER_DIR) not in sys.path:
     sys.path.insert(0, str(WORKER_DIR))
 
 from chapter_range import ChapterRangeError, parse_chapter_range
-from config import BGM_PATH
 from db import (
     _mp3_needs_generation,
     chapter_has_content,
@@ -64,17 +62,6 @@ def _watch_stop(job_id: int, stop_event: threading.Event) -> None:
             except Exception:
                 pass
             return
-
-
-def bgm_block_reason(use_bgm: bool) -> str | None:
-    """generate_mp3 trả [] khi bật nhạc nền mà thiếu ffmpeg — job phải failed, không completed."""
-    if not use_bgm:
-        return None
-    if not BGM_PATH or not Path(BGM_PATH).is_file():
-        return None
-    if shutil.which("ffmpeg") is None:
-        return "Nhạc nền cần ffmpeg (pydub). Cài ffmpeg hoặc tắt nhạc nền."
-    return None
 
 
 def resolve_work_numbers(job: dict) -> list[int]:
@@ -140,11 +127,7 @@ def run_job(job_id: int) -> None:
             mark_if_running(job_id, "completed", None)
             log_message(f"[TTS job {job_id}] không có chương cần tạo")
             return
-        use_bgm = bool(job["bgm_enabled"])
-        block = bgm_block_reason(use_bgm)
-        if block:
-            log_message(f"[TTS job {job_id}] {block} — tiếp tục không nhạc nền.")
-            use_bgm = False
+        use_bgm = False
         log_message(
             f"[TTS job {job_id}] {novel.title} scope={job['scope']} "
             f"engine={job['engine']} voice={job['voice']} rate={job['rate']} bgm={use_bgm} "

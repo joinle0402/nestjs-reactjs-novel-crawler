@@ -1,5 +1,5 @@
 import { SoundOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Form, Input, Select, Space, Switch, Typography, message } from 'antd';
+import { Alert, Button, Card, Form, Input, Select, Space, Typography, message } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { getSavedTtsSample } from '@/features/tts/api/ttsApi.ts';
 import { useTtsSampleMutation, useTtsSettingsQuery, useUpdateTtsSettingsMutation } from '@/features/tts/hooks/useTtsQueries.ts';
@@ -22,7 +22,6 @@ type SettingsForm = {
     engine: string;
     voice: string;
     rate: string;
-    bgmEnabled: boolean;
 };
 
 export function TtsSettingsPage() {
@@ -44,7 +43,6 @@ export function TtsSettingsPage() {
             engine: settingsQuery.data.engine,
             voice: settingsQuery.data.voice,
             rate: settingsQuery.data.rate,
-            bgmEnabled: settingsQuery.data.bgmEnabled,
         });
     }, [form, settingsQuery.data]);
 
@@ -69,7 +67,7 @@ export function TtsSettingsPage() {
                 engine: values.engine,
                 voice: values.voice,
                 rate: values.rate.trim(),
-                bgmEnabled: values.bgmEnabled,
+                bgmEnabled: false,
             },
             {
                 onSuccess: () => message.success('Đã lưu cài đặt TTS'),
@@ -160,6 +158,7 @@ export function TtsSettingsPage() {
             <Typography.Paragraph type="secondary">
                 Mặc định cho lần tạo audio sau. Popup trên trang truyện có thể sửa riêng cho một lần chạy.
                 VieNeu chạy offline trên máy này; lần đầu tải model có thể mất vài phút.
+                Nhạc nền chọn lúc nghe hoặc lúc upload Drive.
             </Typography.Paragraph>
             {settingsQuery.isError ? (
                 <Alert type="error" showIcon title="Không tải được cài đặt" description={getErrorMessage(settingsQuery.error)} />
@@ -207,9 +206,6 @@ export function TtsSettingsPage() {
                         ]}
                     >
                         <Input placeholder="+50%" disabled={!rateApplies} />
-                    </Form.Item>
-                    <Form.Item name="bgmEnabled" label="Nhạc nền" valuePropName="checked">
-                        <Switch />
                     </Form.Item>
                     <Form.Item
                         label="Thử giọng"

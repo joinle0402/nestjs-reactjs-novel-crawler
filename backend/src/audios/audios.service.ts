@@ -1,10 +1,10 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createReadStream, existsSync } from 'fs';
-import { stat } from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 import type { Request, Response } from 'express';
 import { throwUnless } from 'src/common/utils/throw-if';
+import { streamAudioFile } from './stream-audio-file';
 
 @Injectable()
 export class AudiosService {
@@ -35,38 +35,7 @@ export class AudiosService {
         return absolute;
     }
 
-    async streamFile(absolutePath: string, req: Request, res: Response): Promise<void> {
-        const fileStat = await stat(absolutePath);
-        const fileSize = fileStat.size;
-        const rangeHeader = req.headers.range;
-
-        if (!rangeHeader) {
-            res.status(200);
-            res.setHeader('Content-Type', 'audio/mpeg');
-            res.setHeader('Accept-Ranges', 'bytes');
-            res.setHeader('Cache-Control', 'public, max-age=3600');
-            res.setHeader('Content-Length', fileSize);
-            createReadStream(absolutePath).pipe(res);
-            return;
-        }
-
-        const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
-        throwUnless(match, 'Range không hợp lệ', HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE);
-
-        const start = match[1] ? Number(match[1]) : 0;
-        const end = match[2] ? Number(match[2]) : fileSize - 1;
-
-        throwUnless(Number.isFinite(start) && Number.isFinite(end) && start <= end && start < fileSize, 'Range không hợp lệ', HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE);
-
-        const safeEnd = Math.min(end, fileSize - 1);
-        const chunkSize = safeEnd - start + 1;
-
-        res.status(206);
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Accept-Ranges', 'bytes');
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-        res.setHeader('Content-Range', `bytes ${start}-${safeEnd}/${fileSize}`);
-        res.setHeader('Content-Length', chunkSize);
-        createReadStream(absolutePath, { start, end: safeEnd }).pipe(res);
+    streamFile(absolutePath: string, req: Request, res: Response, contentType = 'audio/mpeg'): Promise<void> {
+        return streamAudioFile(absolutePath, req, res, contentType);
     }
 }

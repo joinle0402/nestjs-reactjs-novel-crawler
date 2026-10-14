@@ -1,4 +1,5 @@
-import { Button, Dropdown, Slider, Space, Typography } from 'antd';
+import { useEffect } from 'react';
+import { Button, Dropdown, Select, Slider, Space, Typography } from 'antd';
 import {
     CloseOutlined,
     ForwardOutlined,
@@ -18,6 +19,7 @@ import { useCurrentCrawlJobQuery } from '@/features/crawl/hooks/useCrawlQueries.
 import { isActiveDriveJob } from '@/features/drive/api/driveApi.ts';
 import { DriveJobLine } from '@/features/drive/components/DriveJobLine.tsx';
 import { useCurrentDriveJobQuery } from '@/features/drive/hooks/useDriveQueries.ts';
+import { useBgmTracksQuery } from '@/features/bgm/hooks/useBgmQueries.ts';
 
 function formatTime(seconds: number): string {
     if (!Number.isFinite(seconds) || seconds < 0) {
@@ -47,7 +49,18 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
         playPrev,
         playNext,
         stop,
+        bgmId,
+        setBgmId,
     } = useAudioPlayer();
+    const tracksQuery = useBgmTracksQuery(Boolean(track));
+    useEffect(() => {
+        if (!bgmId || !tracksQuery.data) {
+            return;
+        }
+        if (!tracksQuery.data.some((item) => item.id === bgmId)) {
+            setBgmId(null);
+        }
+    }, [bgmId, tracksQuery.data]);
     const jobQuery = useCurrentTtsJobQuery();
     const job = jobQuery.data;
     const jobActive = isActiveTtsJob(job);
@@ -114,6 +127,17 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
 
             <div className="bottom-player__controls">
                 <Space size={4}>
+                    <Select
+                        size="small"
+                        allowClear
+                        placeholder="Nhạc nền"
+                        aria-label="Nhạc nền"
+                        style={{ width: 148 }}
+                        value={bgmId ?? undefined}
+                        loading={tracksQuery.isLoading}
+                        options={(tracksQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }))}
+                        onChange={(value) => setBgmId(typeof value === 'string' ? value : null)}
+                    />
                     <Button
                         type="text"
                         icon={<BackwardOutlined />}

@@ -58,6 +58,9 @@ export class DriveJobResponse {
     @ApiPropertyOptional({ nullable: true })
     errorMessage!: string | null;
 
+    @ApiPropertyOptional({ nullable: true, description: 'Nhạc nền trộn trước khi upload' })
+    bgmId!: string | null;
+
     @ApiProperty({ type: DriveJobProgress })
     progress!: DriveJobProgress;
 

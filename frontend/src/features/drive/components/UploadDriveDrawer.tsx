@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Drawer, Input, Radio, Space, Typography, message } from 'antd';
+import { Alert, Button, Drawer, Input, Radio, Select, Space, Typography, message } from 'antd';
 import type { DriveScope } from '@/features/drive/api/driveApi.ts';
 import {
     useCurrentDriveJobQuery,
@@ -11,6 +11,7 @@ import {
 import { isActiveDriveJob } from '@/features/drive/api/driveApi.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { formatChapterRangeInput } from '@/features/tts/lib/chapterRange.ts';
+import { useBgmTracksQuery } from '@/features/bgm/hooks/useBgmQueries.ts';
 
 export type DriveRunRequest = {
     scope: DriveScope;
@@ -42,6 +43,8 @@ export function UploadDriveDrawer({ open, novelId, request, onClose }: UploadDri
     const [mode, setMode] = useState<DriveMode>(request?.scope === 'chapters' ? 'chapters' : 'missing');
     const [chapterRange, setChapterRange] = useState(request?.chapterRange ?? '');
     const [debouncedRange, setDebouncedRange] = useState(request?.chapterRange?.trim() ?? '');
+    const [bgmId, setBgmId] = useState<string | undefined>(undefined);
+    const tracksQuery = useBgmTracksQuery(open);
 
     const statusQuery = useDriveStatusQuery(open);
     const countsQuery = useDrivePreviewQuery(open ? novelId : undefined);
@@ -106,8 +109,9 @@ export function UploadDriveDrawer({ open, novelId, request, onClose }: UploadDri
                               ? formatChapterRangeInput(failedNumbers)
                               : chapterRange.trim(),
                   };
+        const bodyWithBgm = bgmId ? { ...body, bgmId } : body;
         try {
-            await startMutation.mutateAsync(body);
+            await startMutation.mutateAsync(bodyWithBgm);
             message.success('Đã bắt đầu upload Drive');
             onClose();
         } catch (error) {
@@ -215,6 +219,22 @@ export function UploadDriveDrawer({ open, novelId, request, onClose }: UploadDri
                             ) : null}
                         </div>
                     ) : null}
+                </div>
+
+                <div>
+                    <Typography.Text strong>Nhạc nền</Typography.Text>
+                    <Select
+                        allowClear
+                        placeholder="Không trộn"
+                        style={{ width: '100%', marginTop: 8 }}
+                        value={bgmId}
+                        loading={tracksQuery.isLoading}
+                        options={(tracksQuery.data ?? []).map((track) => ({ value: track.id, label: track.name }))}
+                        onChange={(value) => setBgmId(typeof value === 'string' ? value : undefined)}
+                    />
+                    <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0', fontSize: 12 }}>
+                        Có chọn thì trộn nhạc vào bản upload. File MP3 trên máy giữ nguyên giọng đọc. File trùng tên trên Drive vẫn được bỏ qua.
+                    </Typography.Paragraph>
                 </div>
 
                 {preview?.driveChecked && preview.driveFolder ? (

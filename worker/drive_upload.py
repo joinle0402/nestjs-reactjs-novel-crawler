@@ -178,6 +178,7 @@ def upload_mp3_files(
     skip_existing: bool = True,
     interactive: bool = True,
     progress=None,
+    prepare_file=None,
 ) -> UploadResult:
     """Upload danh sách file MP3 lên Drive/novel-crawler-mp3/{novel_folder_name}/.
 
@@ -229,8 +230,11 @@ def upload_mp3_files(
             _report(mp3.name)
             continue
 
+        source = mp3
         try:
-            media = MediaFileUpload(str(mp3), mimetype="audio/mpeg", resumable=True)
+            if prepare_file is not None:
+                source = prepare_file(mp3)
+            media = MediaFileUpload(str(source), mimetype="audio/mpeg", resumable=True)
             meta = {"name": mp3.name, "parents": [novel_folder_id]}
             created = (
                 service.files()
@@ -243,6 +247,9 @@ def upload_mp3_files(
         except Exception as exc:
             failed.append((mp3.name, str(exc)))
             print(f"[Drive] Lỗi {mp3.name}: {exc}", flush=True)
+        finally:
+            if source != mp3:
+                source.unlink(missing_ok=True)
         _report(mp3.name, failed[-1][1] if failed and failed[-1][0] == mp3.name else None)
 
     print(

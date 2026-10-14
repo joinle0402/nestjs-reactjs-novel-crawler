@@ -38,6 +38,7 @@ export type DriveJob = {
     startedAt: string | null;
     finishedAt: string | null;
     errorMessage: string | null;
+    bgmId: string | null;
     progress: DriveJobProgress;
     failedFiles: DriveFailedFile[];
     fileResults: DriveFileResult[];
@@ -73,6 +74,7 @@ export type StartDriveJobBody = {
     novelId: number;
     scope: DriveScope;
     chapterRange?: string;
+    bgmId?: string;
 };
 
 export function isActiveDriveJob(job: DriveJob | null | undefined): boolean {

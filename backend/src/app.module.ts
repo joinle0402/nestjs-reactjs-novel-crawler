@@ -18,6 +18,7 @@ import { CrawlJob } from './crawl/entities/crawl-job.entity';
 import { CrawlJobChapter } from './crawl/entities/crawl-job-chapter.entity';
 import { DriveModule } from './drive/drive.module';
 import { DriveUploadJob } from './drive/entities/drive-upload-job.entity';
+import { BgmModule } from './bgm/bgm.module';
 
 @Module({
     imports: [
@@ -56,6 +57,7 @@ import { DriveUploadJob } from './drive/entities/drive-upload-job.entity';
         TtsModule,
         CrawlModule,
         DriveModule,
+        BgmModule,
     ],
     controllers: [AppController],
     providers: [AppService],

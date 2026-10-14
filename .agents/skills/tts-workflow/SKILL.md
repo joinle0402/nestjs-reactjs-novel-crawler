@@ -32,8 +32,8 @@ Crawl may call TTS when `run_tts=True`. Crawl job rules live in the `crawler-wor
 - Skip chapters that already have a valid MP3, and chapters with no content.
 - `_normalize_tts_text` only strips tags, URLs, control characters, emoji, and known junk. Do not rewrite, summarize, or paraphrase the story.
 - VieNeu packs sentences with quote-aware semantics: a sentence adjacent to quoted dialogue joins the chunk ignoring the sentence cap (char budget `VIENEU_CHUNK_*` stays the hard limit); `VIENEU_CHUNK_PAUSE_MS` (350) is inserted between chunks. `_prepare_vieneu_speech` only adjusts pauses and punctuation. Edge-TTS still uses `_split_text_into_chunks` and `TTS_CHUNK_SIZE`.
-- Chunking and background music need ffmpeg. Without ffmpeg, still write the voice MP3.
-- `use_bgm` passed into a job is a snapshot. Do not re-read `tts_settings.json` mid-job for that flag.
+- Chunking needs ffmpeg. Without ffmpeg, still write the voice MP3. Mixing a library track at Drive upload also needs ffmpeg; if ffmpeg is missing that upload job fails and the voice file stays as it is.
+- MP3 generation writes voice only. `use_bgm` on a job is ignored. The player layers a track from `worker/bgm/` beside the voice. Drive upload mixes the chosen track into a temp copy.
 - Stopping or interrupting resets processing chapters so a later run can resume (`reset_processing_tts_chapters`).
 
 API surface on `TtsController`: `getSettings`, `updateSettings`, `savedSample`, `sample`, `audioFile`, `preview`, `current`, `logs`, `start`, `stop`.
@@ -43,13 +43,14 @@ API surface on `TtsController`: `getSettings`, `updateSettings`, `savedSample`, 
 | Change | Start here |
 | --- | --- |
 | Start, stop, preview, progress | `TtsService` in `backend/src/tts/tts.service.ts` |
-| Engine, voice, rate, BGM settings | `TtsSettingsService` and `worker` settings loader |
+| Engine, voice, rate | `TtsSettingsService` and `worker` settings loader |
 | Sample playback | `TtsSampleService`, `worker/tts_sample.py` |
 | Launch or stop the worker | `TtsWorkerService`, `worker/tts_worker.py` |
 | Which chapters get audio | `generate_mp3_for_novel` |
 | Per-chapter synthesis and chunks | `_tts_chapter`, `_tts_chapter_content`; edge-tts `_split_text_into_chunks`; VieNeu `_split_vieneu_chunks` |
 | VieNeu process | `worker/tts_vieneu.py` |
 | Chapter range parsing | `backend/src/tts/chapter-range.ts` and `worker/chapter_range.py` |
+| Background music library | `backend/src/bgm/`, `worker/bgm_library.py`; playback in `AudioPlayerContext` |
 
 Tests matching `*.spec.ts` are excluded from the graph. Read those files directly when the change needs a test.
 
@@ -73,3 +74,4 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-09-27 — VieNeu sentence packing and pause gaps; edge-tts chunk size unchanged.
 - 2026-10-01 — VieNeu runs `VIENEU_BACKEND=torch` via `worker/.env` (RTX GPU, ~8x onnx speed); torch backend needs `transformers` + CUDA torch wheel in `.venv-vieneu`.
 - 2026-10-01 — VieNeu packing now quote-aware (dialogue glue drops the sentence cap, char budget governs); `VIENEU_CHUNK_PAUSE_MS` 250→350. Reference voice `hoaimy.wav` regenerated from edge-tts (26.9s sample).
+- 2026-10-14 — Generation writes voice-only MP3. Library tracks play beside the voice; Drive mixes the selected track before upload.

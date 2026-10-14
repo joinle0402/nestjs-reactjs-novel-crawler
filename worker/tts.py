@@ -509,10 +509,9 @@ def _load_bgm_source():
     return _bgm_source
 
 
-def _prepare_bgm_for_voice(voice):
+def _fit_bgm_to_voice(bgm, voice):
     from pydub import AudioSegment
 
-    bgm = _load_bgm_source()
     bgm = bgm.set_frame_rate(voice.frame_rate).set_channels(voice.channels)
     bgm = bgm + BGM_VOLUME_DB
 
@@ -535,6 +534,25 @@ def _prepare_bgm_for_voice(voice):
     if fade_out > 0:
         bgm = bgm.fade_out(fade_out)
     return bgm
+
+
+def _prepare_bgm_for_voice(voice):
+    return _fit_bgm_to_voice(_load_bgm_source(), voice)
+
+
+def mix_mp3_with_bgm(voice_path: Path, bgm_path: Path, dest_path: Path) -> None:
+    """Trộn nhạc nền vào bản sao MP3. Không ghi đè file giọng gốc."""
+    from pydub import AudioSegment
+
+    voice = AudioSegment.from_file(str(voice_path))
+    bgm = AudioSegment.from_file(str(bgm_path))
+    mixed = voice.overlay(_fit_bgm_to_voice(bgm, voice))
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        mixed.export(str(dest_path), format="mp3", bitrate=BGM_EXPORT_BITRATE)
+    except Exception:
+        dest_path.unlink(missing_ok=True)
+        raise
 
 
 def _apply_loudness_norm(path: Path) -> None:
@@ -851,7 +869,6 @@ async def _tts_chapter(
     engine: str,
     voice: str,
     rate: str,
-    use_bgm: bool,
     quiet: bool = False,
 ) -> Path:
     async with chapter_sem:
@@ -869,9 +886,6 @@ async def _tts_chapter(
                 rate=rate,
                 quiet=quiet,
             )
-            if use_bgm:
-                _mix_background_music_or_skip(output_path, quiet=quiet)
-            # Chuẩn hóa âm lượng sau BGM để mọi chương (có/không nhạc) cùng mức nghe.
             _apply_loudness_norm(output_path)
             if not output_path.is_file() or output_path.stat().st_size <= 0:
                 raise RuntimeError(f"Không tạo được file MP3: {output_path}")
@@ -891,7 +905,6 @@ async def _generate_all_mp3(
     engine: str,
     voice: str,
     rate: str,
-    use_bgm: bool,
     quiet: bool = False,
 ) -> tuple[list[Path], list[Chapter]]:
     chapter_sem = asyncio.Semaphore(TTS_CONCURRENCY)
@@ -912,7 +925,6 @@ async def _generate_all_mp3(
                 engine=engine,
                 voice=voice,
                 rate=rate,
-                use_bgm=use_bgm,
                 quiet=quiet,
             )
         )
@@ -988,8 +1000,6 @@ def chapter_to_mp3(text: str, output_path: Path) -> None:
                 rate=rate,
             )
         )
-    if settings["bgmEnabled"] and _bgm_enabled():
-        _mix_background_music_or_skip(output_path)
 
 
 def generate_mp3_for_novel(
@@ -1005,8 +1015,8 @@ def generate_mp3_for_novel(
 ) -> list[Path]:
     """Tạo 1 file MP3 cho mỗi chương chưa có audio hợp lệ (song song).
 
-    use_bgm=None đọc bật/tắt từ tts_settings.json lúc bắt đầu.
-    Truyền True/False để khóa snapshot của một job, không đọc lại giữa chừng.
+    use_bgm=None đọc cờ cũ trên job. Tạo MP3 không trộn nhạc nền:
+    nghe chọn track riêng, upload Drive mới trộn.
     """
     from config import load_tts_settings
 
@@ -1014,8 +1024,8 @@ def generate_mp3_for_novel(
     engine = engine or str(settings["engine"])
     voice = voice or str(settings["voice"])
     rate = rate or str(settings["rate"])
-    if use_bgm is None:
-        use_bgm = bool(settings["bgmEnabled"])
+    if use_bgm and not quiet:
+        log_message("Nhạc nền không trộn lúc tạo MP3. Chọn nhạc khi nghe hoặc khi upload Drive.")
 
     all_chapters = get_chapters_for_novel(novel_id)
     need_mp3 = get_chapters_without_mp3(novel_id)
@@ -1047,15 +1057,6 @@ def generate_mp3_for_novel(
             "Lưu ý: chưa cài ffmpeg — ghép chunk MP3 bằng nối byte "
             "(vẫn nghe được, chất lượng tương đương)."
         )
-    mix_bgm = bool(use_bgm) and _bgm_enabled() and _ffmpeg_on_path()
-    if use_bgm and _bgm_enabled() and not mix_bgm and not quiet:
-        log_message(
-            "Lưu ý: không có ffmpeg — bỏ nhạc nền, vẫn tạo MP3 giọng đọc. "
-            "Cài ffmpeg: winget install Gyan.FFmpeg"
-        )
-    if mix_bgm and not quiet:
-        log_message(f"Nhạc nền: {BGM_PATH} ({BGM_VOLUME_DB} dB, loop={BGM_LOOP})")
-
     chunk_info = ""
     if ENABLE_TTS_CHUNK:
         chunk_info = f", chunk concurrency={TTS_CHUNK_CONCURRENCY}"
@@ -1077,7 +1078,6 @@ def generate_mp3_for_novel(
                 engine=engine,
                 voice=voice,
                 rate=rate,
-                use_bgm=mix_bgm,
                 quiet=quiet,
             )
         )

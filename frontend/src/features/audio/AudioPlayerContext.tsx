@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
 import { getChapter, getChapterAudioUrl, getChapterByNumber, type ChapterDetail, type ChapterNeighbor } from '@/features/chapters/api/chaptersApi.ts';
+import { getBgmAudioUrl } from '@/features/bgm/api/bgmApi.ts';
 import { getPlayback, upsertPlayback } from '@/features/novels/api/novelsApi.ts';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
@@ -20,6 +21,7 @@ type AudioPlayerContextValue = {
     currentTime: number;
     duration: number;
     rate: number;
+    bgmId: string | null;
     errorMessage: string | null;
     playChapter: (input: {
         novelId: number;
@@ -32,6 +34,7 @@ type AudioPlayerContextValue = {
     pause: () => void;
     seek: (seconds: number) => void;
     setRate: (rate: number) => void;
+    setBgmId: (id: string | null) => void;
     playPrev: () => Promise<void>;
     playNext: () => Promise<void>;
     stop: () => void;
@@ -41,6 +44,17 @@ const AudioPlayerContext = createContext<AudioPlayerContextValue | null>(null);
 
 const PLAYBACK_SAVE_INTERVAL_MS = 8_000;
 const RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+const BGM_STORAGE_KEY = 'nc-bgm-id';
+const BGM_VOLUME = 0.13;
+
+function readStoredBgmId(): string | null {
+    try {
+        const value = localStorage.getItem(BGM_STORAGE_KEY)?.trim();
+        return value ? value : null;
+    } catch {
+        return null;
+    }
+}
 
 function toTrack(novelTitle: string, chapter: ChapterDetail): PlayableTrack {
     return {
@@ -72,16 +86,20 @@ async function findNearestWithAudio(
 
 export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const bgmRef = useRef<HTMLAudioElement | null>(null);
     const trackRef = useRef<PlayableTrack | null>(null);
     const rateRef = useRef(1.5);
+    const bgmIdRef = useRef<string | null>(readStoredBgmId());
     const lastSavedAtRef = useRef(0);
     const pendingResumeRef = useRef<number | null>(null);
+    const syncBgmRef = useRef<(playing: boolean) => void>(() => undefined);
 
     const [track, setTrack] = useState<PlayableTrack | null>(null);
     const [status, setStatus] = useState<PlayerStatus>('idle');
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [rate, setRateState] = useState(1.5);
+    const [bgmId, setBgmIdState] = useState<string | null>(bgmIdRef.current);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     useEffect(() => {
@@ -114,10 +132,14 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
             pendingResumeRef.current = null;
         };
         const onTimeUpdate = () => setCurrentTime(audio.currentTime);
-        const onPlay = () => setStatus('playing');
+        const onPlay = () => {
+            setStatus('playing');
+            syncBgmRef.current(true);
+        };
         const onPause = () => {
             if (!audio.ended) {
                 setStatus('paused');
+                syncBgmRef.current(false);
             }
         };
         const onWaiting = () => setStatus('loading');
@@ -149,6 +171,51 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
             audioRef.current = null;
         };
     }, []);
+
+    useEffect(() => {
+        const bgm = new Audio();
+        bgm.loop = true;
+        bgm.preload = 'none';
+        bgm.volume = BGM_VOLUME;
+        bgmRef.current = bgm;
+        return () => {
+            bgm.pause();
+            bgm.removeAttribute('src');
+            bgmRef.current = null;
+        };
+    }, []);
+
+    const syncBgm = (playing: boolean) => {
+        const bgm = bgmRef.current;
+        if (!bgm) {
+            return;
+        }
+        const id = bgmIdRef.current;
+        if (!id) {
+            bgm.pause();
+            if (bgm.dataset.track) {
+                delete bgm.dataset.track;
+                bgm.removeAttribute('src');
+                bgm.load();
+            }
+            return;
+        }
+        if (bgm.dataset.track !== id) {
+            bgm.dataset.track = id;
+            bgm.src = getBgmAudioUrl(id);
+            bgm.loop = true;
+            bgm.volume = BGM_VOLUME;
+            bgm.load();
+        }
+        if (playing) {
+            if (bgm.paused) {
+                void bgm.play().catch(() => undefined);
+            }
+            return;
+        }
+        bgm.pause();
+    };
+    syncBgmRef.current = syncBgm;
 
     const savePlayback = useEffectEvent(async (force = false) => {
         const current = trackRef.current;
@@ -218,18 +285,21 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
                 const current = trackRef.current;
                 if (!current?.next) {
                     setStatus('paused');
+                    syncBgmRef.current(false);
                     return;
                 }
                 try {
                     const nextChapter = current.next.hasMp3 ? await getChapter(current.next.id) : await findNearestWithAudio(current.next, 'next');
                     if (!nextChapter) {
                         setStatus('paused');
+                        syncBgmRef.current(false);
                         return;
                     }
                     await loadAndPlay(current.novelTitle, nextChapter, 0);
                 } catch {
                     setStatus('error');
                     setErrorMessage('Không tải được chương tiếp theo.');
+                    syncBgmRef.current(false);
                 }
             })();
         };
@@ -330,6 +400,28 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    const setBgmId = (id: string | null) => {
+        const next = id && id.trim() ? id : null;
+        bgmIdRef.current = next;
+        setBgmIdState(next);
+        try {
+            if (next) {
+                localStorage.setItem(BGM_STORAGE_KEY, next);
+            } else {
+                localStorage.removeItem(BGM_STORAGE_KEY);
+            }
+        } catch {
+            // ignore storage failures
+        }
+        const bgm = bgmRef.current;
+        if (bgm && bgm.dataset.track !== (next ?? '')) {
+            delete bgm.dataset.track;
+        }
+        const voice = audioRef.current;
+        const playing = Boolean(voice && trackRef.current && !voice.paused && !voice.ended);
+        syncBgm(playing);
+    };
+
     const playPrev = async () => {
         const current = trackRef.current;
         if (!current?.prev) {
@@ -381,6 +473,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         currentTime,
         duration,
         rate,
+        bgmId,
         errorMessage,
         playChapter,
         resumeNovel,
@@ -388,6 +481,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         pause,
         seek,
         setRate,
+        setBgmId,
         playPrev,
         playNext,
         stop,

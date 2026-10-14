@@ -17,6 +17,7 @@ import {
     type ChapterRange,
 } from 'src/tts/chapter-range';
 import { resolveWorkerDir } from 'src/tts/tts-settings.service';
+import { BgmService } from 'src/bgm/bgm.service';
 import { StartDriveJobRequest } from './dtos/requests/start-drive-job.request';
 import { DriveJobProgress, DriveJobResponse } from './dtos/responses/drive-job.response';
 import { DriveChaptersPreview, DrivePreviewResponse } from './dtos/responses/drive-preview.response';
@@ -92,6 +93,7 @@ export class DriveService {
         private readonly chaptersRepository: Repository<Chapter>,
         private readonly novelsService: NovelsService,
         private readonly dataSource: DataSource,
+        private readonly bgmService: BgmService,
     ) {}
 
     async status(): Promise<DriveStatusResponse> {
@@ -166,6 +168,11 @@ export class DriveService {
         }
         throwUnless(numbers.length > 0, 'Không có chương MP3 nào trong phạm vi đã chọn', HttpStatus.BAD_REQUEST);
 
+        const bgmId = request.bgmId?.trim() || null;
+        if (bgmId) {
+            throwUnless(await this.bgmService.exists(bgmId), 'Không tìm thấy nhạc nền đã chọn', HttpStatus.BAD_REQUEST);
+        }
+
         this.checkCache.delete(novel.id);
         const saved = await this.insertJob({
             novelId: novel.id,
@@ -173,6 +180,7 @@ export class DriveService {
             chapterRange,
             chapterNumbers: numbers,
             totalFiles: numbers.length,
+            bgmId,
         });
         return this.toResponse(saved, novel.title);
     }
@@ -294,6 +302,7 @@ export class DriveService {
         chapterRange: string | null;
         chapterNumbers: number[];
         totalFiles: number;
+        bgmId: string | null;
     }): Promise<DriveUploadJob> {
         const queryRunner = this.dataSource.createQueryRunner();
         await queryRunner.connect();
@@ -315,6 +324,7 @@ export class DriveService {
                 chapterRange: input.chapterRange,
                 chapterNumbers: input.chapterNumbers,
                 totalFiles: input.totalFiles,
+                bgmId: input.bgmId,
                 status: 'pending' as const,
                 startedAt: null,
                 finishedAt: null,
@@ -361,6 +371,7 @@ export class DriveService {
             startedAt: job.startedAt,
             finishedAt: job.finishedAt,
             errorMessage: job.errorMessage,
+            bgmId: job.bgmId,
             progress: this.progress(job),
             failedFiles: this.failedFilesOf(job),
             fileResults: this.fileResultsOf(job),

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+import shutil
 import signal
 import sys
+import tempfile
 import threading
 import traceback
 from pathlib import Path
@@ -14,6 +16,7 @@ WORKER_DIR = Path(__file__).resolve().parent
 if str(WORKER_DIR) not in sys.path:
     sys.path.insert(0, str(WORKER_DIR))
 
+from bgm_library import track_file
 from chapter_range import ChapterRangeError, parse_chapter_range
 from db import get_chapters_with_mp3, get_novel_by_id
 from drive_jobs import (
@@ -27,7 +30,7 @@ from drive_jobs import (
 )
 from drive_upload import upload_mp3_files
 from log_utils import log_message
-from tts import _safe_filename
+from tts import _safe_filename, mix_mp3_with_bgm
 
 PID_PATH = WORKER_DIR / "drive_runner.pid"
 
@@ -94,6 +97,7 @@ def run_job(job_id: int) -> None:
         daemon=True,
     )
     watcher.start()
+    temp_dir: Path | None = None
     try:
         if not claim_job(job_id):
             return
@@ -160,8 +164,25 @@ def run_job(job_id: int) -> None:
                 current_file=name,
             )
 
+        bgm_id = str(job.get("bgm_id") or "").strip()
+        prepare_file = None
+        if bgm_id:
+            bgm_path = track_file(bgm_id)
+            if bgm_path is None:
+                mark_if_running(job_id, "failed", "Không tìm thấy nhạc nền đã chọn")
+                return
+            if shutil.which("ffmpeg") is None:
+                mark_if_running(job_id, "failed", "Trộn nhạc nền cần ffmpeg. Cài ffmpeg rồi chạy lại.")
+                return
+            temp_dir = Path(tempfile.mkdtemp(prefix=f"drive-bgm-{job_id}-"))
+
+            def prepare_file(src: Path, _bgm: Path = bgm_path, _dir: Path = temp_dir) -> Path:
+                dest = _dir / src.name
+                mix_mp3_with_bgm(src, _bgm, dest)
+                return dest
+
         log_message(
-            f"[Drive job {job_id}] {novel.title} scope={job['scope']} files={len(mp3_files)}"
+            f"[Drive job {job_id}] {novel.title} scope={job['scope']} files={len(mp3_files)} bgm={bgm_id or '-'}"
         )
         if not mp3_files:
             mark_if_running(job_id, "failed", "Không có file MP3 nào đọc được trên máy")
@@ -171,6 +192,7 @@ def run_job(job_id: int) -> None:
             novel_folder_name=_safe_filename(novel.title),
             interactive=False,
             progress=progress,
+            prepare_file=prepare_file,
         )
         set_failed_files(job_id, failed_files)
         current = fetch_job(job_id)
@@ -179,6 +201,8 @@ def run_job(job_id: int) -> None:
         mark_if_running(job_id, "completed", None)
         log_message(f"[Drive job {job_id}] completed")
     finally:
+        if temp_dir is not None:
+            shutil.rmtree(temp_dir, ignore_errors=True)
         stop_event.set()
         _clear_pid()
 

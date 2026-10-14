@@ -17,4 +17,10 @@ export class StartDriveJobRequest {
     @MaxLength(2000)
     @ApiPropertyOptional({ description: 'Bắt buộc khi scope=chapters. Cùng format TTS: 10 | 5-10 | 1,2,5' })
     chapterRange?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(64)
+    @ApiPropertyOptional({ description: 'Id nhạc nền. Có giá trị thì trộn vào MP3 trước khi upload.' })
+    bgmId?: string;
 }

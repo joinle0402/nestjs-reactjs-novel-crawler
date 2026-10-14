@@ -75,6 +75,9 @@ export class DriveUploadJob {
     @Column({ name: 'error_message', type: 'text', nullable: true })
     errorMessage!: string | null;
 
+    @Column({ name: 'bgm_id', type: 'varchar', length: 64, nullable: true })
+    bgmId!: string | null;
+
     @CreateDateColumn({ name: 'created_at', type: 'datetime' })
     createdAt!: Date;
 

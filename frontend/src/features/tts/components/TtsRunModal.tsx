@@ -26,7 +26,6 @@ export function TtsRunModal({ open, novelId, request, onClose }: TtsRunModalProp
     const [engine, setEngine] = useState('edge-tts');
     const [voice, setVoice] = useState('');
     const [rate, setRate] = useState('+50%');
-    const [bgmEnabled, setBgmEnabled] = useState(true);
 
     const countsQuery = useTtsPreviewQuery(open ? novelId : undefined);
     const rangeQuery = useTtsPreviewQuery(
@@ -51,7 +50,6 @@ export function TtsRunModal({ open, novelId, request, onClose }: TtsRunModalProp
         setEngine(settingsQuery.data.engine || 'edge-tts');
         setVoice(settingsQuery.data.voice);
         setRate(settingsQuery.data.rate);
-        setBgmEnabled(settingsQuery.data.bgmEnabled);
     }, [customize, settingsQuery.data]);
 
     useEffect(() => {
@@ -98,7 +96,6 @@ export function TtsRunModal({ open, novelId, request, onClose }: TtsRunModalProp
                           engine,
                           voice,
                           rate: rate.trim(),
-                          bgmEnabled,
                       }
                     : {}),
             });
@@ -198,9 +195,6 @@ export function TtsRunModal({ open, novelId, request, onClose }: TtsRunModalProp
                                 disabled={!rateApplies}
                                 onChange={(event) => setRate(event.target.value)}
                             />
-                        </Form.Item>
-                        <Form.Item label="Nhạc nền" style={{ marginBottom: 0 }}>
-                            <Switch checked={bgmEnabled} onChange={setBgmEnabled} />
                         </Form.Item>
                     </Form>
                 </div>
