@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Layout, Menu, Switch, Typography, theme } from 'antd';
+import { Button, Layout, Menu, Switch, Typography, theme } from 'antd';
 import {
     BookOutlined,
+    CheckOutlined,
     CloudDownloadOutlined,
     DashboardOutlined,
     MoonOutlined,
@@ -18,6 +19,8 @@ import { isActiveCrawlJob } from '@/features/crawl/api/crawlApi.ts';
 import { useCrawlJobWatch } from '@/features/crawl/hooks/useCrawlQueries.ts';
 import { isActiveDriveJob } from '@/features/drive/api/driveApi.ts';
 import { useDriveJobWatch } from '@/features/drive/hooks/useDriveQueries.ts';
+import { ACCENTS, ACCENT_ORDER } from '@/shared/theme/themeModeContext.ts';
+import type { Accent } from '@/shared/theme/themeModeContext.ts';
 import { useThemeMode } from '@/shared/theme/useThemeMode.ts';
 
 const { Sider, Content } = Layout;
@@ -26,7 +29,7 @@ export function MainLayout() {
     const [collapsed, setCollapsed] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
-    const { mode, toggle } = useThemeMode();
+    const { mode, toggle, accent, setAccent } = useThemeMode();
     const { token } = theme.useToken();
     const { track } = useAudioPlayer();
     const jobQuery = useTtsJobWatch();
@@ -171,6 +174,41 @@ export function MainLayout() {
                                 Giao diện tối
                             </Typography.Text>
                         ) : null}
+                    </div>
+
+                    <div
+                        role="radiogroup"
+                        aria-label="Màu chủ đạo"
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '4px 20px 12px',
+                            justifyContent: collapsed ? 'center' : 'flex-start',
+                        }}
+                    >
+                        {ACCENT_ORDER.map((key) => {
+                            const meta = ACCENTS[key as Accent];
+                            const selected = accent === key;
+                            return (
+                                <Button
+                                    key={key}
+                                    shape="circle"
+                                    size="small"
+                                    role="radio"
+                                    aria-checked={selected}
+                                    aria-label={`Màu chủ đạo ${meta.label}`}
+                                    title={meta.label}
+                                    onClick={() => setAccent(key)}
+                                    style={{
+                                        backgroundColor: meta.colorPrimary,
+                                        borderColor: meta.colorPrimary,
+                                        boxShadow: selected ? `0 0 0 2px ${token.colorText}` : undefined,
+                                    }}
+                                    icon={selected ? <CheckOutlined style={{ color: '#fff', fontSize: 10 }} /> : null}
+                                />
+                            );
+                        })}
                     </div>
                 </div>
             </Sider>

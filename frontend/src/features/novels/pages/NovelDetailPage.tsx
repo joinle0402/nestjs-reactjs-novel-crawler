@@ -13,6 +13,7 @@ import {
     Tag,
     Typography,
     message,
+    theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { CaretRightOutlined, CloudDownloadOutlined, CloudSyncOutlined, CloudUploadOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
@@ -49,11 +50,12 @@ import { isRowActionTarget, pageLimitParam, parsePageLimit, tableScroll } from '
 
 const { CheckableTag } = Tag;
 
-const PILL_COLORS = {
-    crawl: '#1677ff',
+/** `crawl` đổi theo accent người dùng chọn; tts/drive giữ màu đặc trưng riêng. */
+const PILL_COLORS = (colorPrimary: string) => ({
+    crawl: colorPrimary,
     tts: '#722ed1',
     drive: '#52c41a',
-} as const;
+});
 
 function StatPill({ color, checked, onChange, children }: { color: string; checked: boolean; onChange: (checked: boolean) => void; children: ReactNode }) {
     return (
@@ -94,6 +96,8 @@ function baseName(filePath: string): string {
 }
 
 export function NovelDetailPage() {
+    const { token } = theme.useToken();
+    const pillColors = PILL_COLORS(token.colorPrimary);
     const { novelId: novelIdParam } = useParams();
     const novelId = parseRouteId(novelIdParam);
     const navigate = useNavigate();
@@ -598,14 +602,14 @@ export function NovelDetailPage() {
                     />
                     <Tag style={{ marginInlineEnd: 0 }}>{stats?.total ?? 0} chương</Tag>
                     <StatPill
-                        color={PILL_COLORS.crawl}
+                        color={pillColors.crawl}
                         checked={crawlStatus === JobStatus.COMPLETED}
                         onChange={(checked) => updateFilters({ crawlStatus: checked ? JobStatus.COMPLETED : undefined })}
                     >
                         Crawl {stats?.crawled ?? 0}
                     </StatPill>
                     <StatPill
-                        color={PILL_COLORS.tts}
+                        color={pillColors.tts}
                         checked={ttsStatus === JobStatus.COMPLETED}
                         onChange={(checked) => updateFilters({ ttsStatus: checked ? JobStatus.COMPLETED : undefined })}
                     >
@@ -613,7 +617,7 @@ export function NovelDetailPage() {
                     </StatPill>
                     
                     <StatPill
-                        color={PILL_COLORS.drive}
+                        color={pillColors.drive}
                         checked={onDrive === true}
                         onChange={(checked) => updateFilters({ onDrive: checked ? 'true' : undefined })}
                     >

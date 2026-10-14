@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Drawer, Modal, Progress, Space, Tag, Typography, message } from 'antd';
+import { Button, Drawer, Modal, Progress, Space, Tag, Typography, message, theme } from 'antd';
 import {
     FileTextOutlined,
     LoadingOutlined,
@@ -18,6 +18,7 @@ type TtsJobLineProps = {
 };
 
 export function TtsJobLine({ job }: TtsJobLineProps) {
+    const { token } = theme.useToken();
     const stopMutation = useStopTtsJobMutation();
     const [logOpen, setLogOpen] = useState(false);
     const logQuery = useTtsLogsQuery(logOpen);
@@ -101,7 +102,7 @@ export function TtsJobLine({ job }: TtsJobLineProps) {
                         percent={currentPercent !== null && currentPercent !== undefined ? currentPercent : overallPercent}
                         size="small"
                         status="active"
-                        strokeColor={job.engine === 'vieneu' ? '#722ed1' : '#1677ff'}
+                        strokeColor={job.engine === 'vieneu' ? '#722ed1' : token.colorPrimary}
                         format={(pct) => (currentChapterNumber ? `Chương: ${pct}%` : `${pct}%`)}
                     />
                 </div>

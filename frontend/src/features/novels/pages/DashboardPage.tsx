@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Button, Card, Empty, Input, Modal, Space, Spin, Table, Tooltip, Typography, message } from 'antd';
+import { Alert, Button, Card, Empty, Input, Modal, Space, Spin, Table, Tooltip, Typography, message, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -15,7 +15,12 @@ import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { ListPagination } from '@/shared/ui/ListPagination.tsx';
 import { DEFAULT_PAGE_LIMIT, isRowActionTarget, tableScroll } from '@/shared/ui/listPagination.ts';
 
-function statusOf(done: number, failed: number, total: number): { color: string; label: string; running: boolean } {
+function statusOf(
+    done: number,
+    failed: number,
+    total: number,
+    runningColor: string,
+): { color: string; label: string; running: boolean } {
     if (failed > 0) {
         return { color: '#ff4d4f', label: 'Có lỗi', running: false };
     }
@@ -23,12 +28,13 @@ function statusOf(done: number, failed: number, total: number): { color: string;
         return { color: '#52c41a', label: 'Hoàn tất', running: false };
     }
     if (done > 0) {
-        return { color: '#1677ff', label: 'Đang chạy', running: true };
+        return { color: runningColor, label: 'Đang chạy', running: true };
     }
     return { color: '#d9d9d9', label: 'Chưa bắt đầu', running: false };
 }
 
 export function DashboardPage() {
+    const { token } = theme.useToken();
     const navigate = useNavigate();
     const { data, isLoading, isError, error } = useNovelsQuery();
     const createMutation = useCreateNovelMutation();
@@ -165,7 +171,7 @@ export function DashboardPage() {
             width: 110,
             render: (_, novel) => {
                 const s = novel.stats;
-                const { color, label, running } = statusOf(s.crawled, s.crawlFailed, s.total);
+                const { color, label, running } = statusOf(s.crawled, s.crawlFailed, s.total, token.colorPrimary);
                 return (
                     <Tooltip title={`${label}: ${s.crawled}/${s.total} chương đã crawl`}>
                         <span className="status-count">
@@ -185,7 +191,7 @@ export function DashboardPage() {
             width: 110,
             render: (_, novel) => {
                 const s = novel.stats;
-                const { color, label, running } = statusOf(s.ttsDone, s.ttsFailed, s.total);
+                const { color, label, running } = statusOf(s.ttsDone, s.ttsFailed, s.total, token.colorPrimary);
                 return (
                     <Tooltip title={`${label}: ${s.ttsDone}/${s.total} chương đã TTS`}>
                         <span className="status-count">
