@@ -26,7 +26,8 @@ import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { parseRouteId } from '@/shared/lib/parseRouteId.ts';
 import { ListPagination } from '@/shared/ui/ListPagination.tsx';
-import { DEFAULT_PAGE_LIMIT, isRowActionTarget, tableScroll } from '@/shared/ui/listPagination.ts';
+import { DEFAULT_PAGE_LIMIT, isRowActionTarget } from '@/shared/ui/listPagination.ts';
+import { fitTableScroll, useTableScrollFit } from '@/shared/ui/useTableScrollFit.ts';
 
 const STATUS_FILTERS: { label: string; value: CrawlJobStatus | '' }[] = [
     { label: 'Tất cả', value: '' },
@@ -81,6 +82,7 @@ export function CrawlPage() {
     const [pageSize, setPageSize] = useState(DEFAULT_PAGE_LIMIT);
     const [selectedJobIds, setSelectedJobIds] = useState<number[]>([]);
     const [chapterFilter, setChapterFilter] = useState<CrawlChapterStatus | ''>('');
+    const { areaRef, bodyHeight } = useTableScrollFit();
     const jobsQuery = useCrawlJobsQuery(statusFilter, page, pageSize);
     const active = currentQuery.data && isActiveCrawlJob(currentQuery.data) ? currentQuery.data : null;
     const detailQuery = useCrawlJobQuery(detailOpen ? selectedId : null);
@@ -251,43 +253,46 @@ export function CrawlPage() {
                         </Button>
                     ))}
                 </Space>
-                <Table
-                    rowKey="id"
-                    size="small"
-                    columns={columns}
-                    dataSource={jobsQuery.data?.items ?? []}
-                    loading={jobsQuery.isLoading}
-                    rowSelection={{
-                        selectedRowKeys: selectedJobIds,
-                        preserveSelectedRowKeys: true,
-                        onChange: (keys) => setSelectedJobIds(keys.map(Number)),
-                    }}
-                    pagination={false}
-                    scroll={tableScroll(undefined, pageSize)}
-                    onRow={(job) => ({
-                        onClick: (event) => {
-                            if (isRowActionTarget(event.target)) {
+                <div ref={areaRef}>
+                    <Table
+                        rowKey="id"
+                        size="small"
+                        columns={columns}
+                        dataSource={jobsQuery.data?.items ?? []}
+                        loading={jobsQuery.isLoading}
+                        rowSelection={{
+                            selectedRowKeys: selectedJobIds,
+                            preserveSelectedRowKeys: true,
+                            onChange: (keys) => setSelectedJobIds(keys.map(Number)),
+                        }}
+                        pagination={false}
+                        tableLayout="auto"
+                        scroll={fitTableScroll(undefined, bodyHeight)}
+                        onRow={(job) => ({
+                            onClick: (event) => {
+                                if (isRowActionTarget(event.target)) {
+                                    return;
+                                }
+                                openDetail(job.id);
+                            },
+                            style: { cursor: 'pointer' },
+                        })}
+                    />
+                    <ListPagination
+                        current={page}
+                        pageSize={pageSize}
+                        total={jobsQuery.data?.total ?? 0}
+                        totalLabel={(total) => `${total} tác vụ`}
+                        onChange={(nextPage, nextSize) => {
+                            if (nextSize !== pageSize) {
+                                setPageSize(nextSize);
+                                setPage(1);
                                 return;
                             }
-                            openDetail(job.id);
-                        },
-                        style: { cursor: 'pointer' },
-                    })}
-                />
-                <ListPagination
-                    current={page}
-                    pageSize={pageSize}
-                    total={jobsQuery.data?.total ?? 0}
-                    totalLabel={(total) => `${total} tác vụ`}
-                    onChange={(nextPage, nextSize) => {
-                        if (nextSize !== pageSize) {
-                            setPageSize(nextSize);
-                            setPage(1);
-                            return;
-                        }
-                        setPage(nextPage);
-                    }}
-                />
+                            setPage(nextPage);
+                        }}
+                    />
+                </div>
             </Card>
 
             <CrawlTaskDrawer

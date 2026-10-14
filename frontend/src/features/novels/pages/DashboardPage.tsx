@@ -13,7 +13,8 @@ import { NovelFormModal, type NovelFormValues } from '@/features/novels/componen
 import type { NovelListItem } from '@/features/novels/api/novelsApi.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { ListPagination } from '@/shared/ui/ListPagination.tsx';
-import { DEFAULT_PAGE_LIMIT, isRowActionTarget, tableScroll } from '@/shared/ui/listPagination.ts';
+import { DEFAULT_PAGE_LIMIT, isRowActionTarget } from '@/shared/ui/listPagination.ts';
+import { fitTableScroll, useTableScrollFit } from '@/shared/ui/useTableScrollFit.ts';
 
 function statusOf(
     done: number,
@@ -46,6 +47,7 @@ export function DashboardPage() {
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(DEFAULT_PAGE_LIMIT);
     const [selectedNovelIds, setSelectedNovelIds] = useState<number[]>([]);
+    const { areaRef, bodyHeight } = useTableScrollFit();
 
     const filtered = useMemo(() => {
         if (!data) {
@@ -283,7 +285,7 @@ export function DashboardPage() {
                         </Button>
                     </Empty>
                 ) : (
-                    <>
+                    <div ref={areaRef}>
                         <Table<NovelListItem>
                             rowKey="id"
                             size="small"
@@ -305,7 +307,7 @@ export function DashboardPage() {
                                     navigate(`/novels/${novel.id}`);
                                 },
                             })}
-                            scroll={tableScroll(700, pageSize)}
+                            scroll={fitTableScroll(700, bodyHeight)}
                         />
                         <ListPagination
                             current={currentPage}
@@ -321,7 +323,7 @@ export function DashboardPage() {
                                 setPage(nextPage);
                             }}
                         />
-                    </>
+                    </div>
                 )}
             </Card>
 

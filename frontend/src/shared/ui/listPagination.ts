@@ -26,21 +26,6 @@ export function pageLimitParam(limit: number): string | undefined {
     return String(limit);
 }
 
-export function isLargePageLimit(limit: number): boolean {
-    return limit >= 100;
-}
-
-export function tableScroll(x: number | undefined, limit: number): { x?: number; y?: string } | undefined {
-    const y = isLargePageLimit(limit) ? 'calc(100vh - 420px)' : undefined;
-    if (x == null && y == null) {
-        return undefined;
-    }
-    return {
-        ...(x != null ? { x } : {}),
-        ...(y != null ? { y } : {}),
-    };
-}
-
 export function isRowActionTarget(target: EventTarget | null): boolean {
     return (
         target instanceof HTMLElement &&

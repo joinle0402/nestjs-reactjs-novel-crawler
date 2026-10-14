@@ -46,7 +46,8 @@ import { isActiveDriveJob } from '@/features/drive/api/driveApi.ts';
 import { UploadDriveDrawer, type DriveRunRequest } from '@/features/drive/components/UploadDriveDrawer.tsx';
 import { useCurrentDriveJobQuery, useDrivePreviewQuery, useSyncDrivePreviewMutation } from '@/features/drive/hooks/useDriveQueries.ts';
 import { ListPagination } from '@/shared/ui/ListPagination.tsx';
-import { isRowActionTarget, pageLimitParam, parsePageLimit, tableScroll } from '@/shared/ui/listPagination.ts';
+import { isRowActionTarget, pageLimitParam, parsePageLimit } from '@/shared/ui/listPagination.ts';
+import { fitTableScroll, useTableScrollFit } from '@/shared/ui/useTableScrollFit.ts';
 
 const { CheckableTag } = Tag;
 
@@ -108,6 +109,7 @@ export function NovelDetailPage() {
     const [selectedChapters, setSelectedChapters] = useState<Map<number, number>>(new Map());
     const [runRequest, setRunRequest] = useState<TtsRunRequest | null>(null);
     const [driveRequest, setDriveRequest] = useState<DriveRunRequest | null>(null);
+    const { areaRef, bodyHeight } = useTableScrollFit();
 
     const createMutation = useCreateChapterMutation();
     const crawlMutation = useCreateCrawlJobMutation();
@@ -640,7 +642,7 @@ export function NovelDetailPage() {
                         </Button>
                     </Empty>
                 ) : (
-                    <>
+                    <div ref={areaRef}>
                         <Table<ChapterListItem>
                             rowKey="id"
                             size="small"
@@ -683,7 +685,7 @@ export function NovelDetailPage() {
                                     });
                                 },
                             })}
-                            scroll={tableScroll(1000, limit)}
+                            scroll={fitTableScroll(1000, bodyHeight)}
                         />
                         <ListPagination
                             current={chaptersQuery.data?.meta.page ?? page}
@@ -698,7 +700,7 @@ export function NovelDetailPage() {
                                 updateFilters({ page: nextPage > 1 ? String(nextPage) : undefined });
                             }}
                         />
-                    </>
+                    </div>
                 )}
             </Card>
 
