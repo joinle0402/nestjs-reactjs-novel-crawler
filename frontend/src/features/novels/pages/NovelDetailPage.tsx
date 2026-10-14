@@ -463,6 +463,7 @@ export function NovelDetailPage() {
             <Breadcrumb
                 items={[
                     { title: <Link to="/">Dashboard</Link> },
+                    { title: <Link to="/novels">Danh sách truyện</Link> },
                     { title: novel.title },
                 ]}
             />

@@ -61,6 +61,7 @@ export function ChapterReaderPage() {
             <Breadcrumb
                 items={[
                     { title: <Link to="/">Dashboard</Link> },
+                    { title: <Link to="/novels">Danh sách truyện</Link> },
                     { title: <Link to={parentPath}>{novelTitle}</Link> },
                     { title: `Chương ${chapter.chapterNumber}` },
                 ]}

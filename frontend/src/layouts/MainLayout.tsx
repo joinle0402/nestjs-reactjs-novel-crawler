@@ -40,25 +40,17 @@ export function MainLayout() {
     const driveQuery = useDriveJobWatch();
     const driveActive = isActiveDriveJob(driveQuery.data);
 
-    const isHome = location.pathname === '/';
     const selectedKeys = location.pathname.startsWith('/settings')
         ? ['settings']
         : location.pathname.startsWith('/crawl')
           ? ['crawl']
           : location.pathname.startsWith('/bgm')
             ? ['bgm']
-            : isHome
-              ? ['dashboard', 'novels']
-              : [];
-
-    const goHome = (scrollToNovels = false) => {
-        navigate('/');
-        if (scrollToNovels) {
-            requestAnimationFrame(() => {
-                document.getElementById('novels-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            });
-        }
-    };
+            : location.pathname === '/' || location.pathname === '/dashboard'
+              ? ['dashboard']
+              : location.pathname.startsWith('/novels')
+                ? ['novels']
+                : [];
 
     return (
         <Layout style={{ minHeight: '100vh' }}>
@@ -104,9 +96,9 @@ export function MainLayout() {
                         style={{ flex: 1, borderInlineEnd: 'none' }}
                         onClick={({ key }) => {
                             if (key === 'dashboard') {
-                                goHome(false);
+                                navigate('/');
                             } else if (key === 'novels') {
-                                goHome(true);
+                                navigate('/novels');
                             } else if (key === 'settings') {
                                 navigate('/settings');
                             } else if (key === 'crawl') {

@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, Empty, Input, Modal, Space, Spin, Table, Tooltip, Typography, message, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useNovelsQuery } from '@/features/novels/hooks/useNovelsQuery.ts';
 import {
     useCreateNovelMutation,
@@ -34,9 +34,10 @@ function statusOf(
     return { color: '#d9d9d9', label: 'Chưa bắt đầu', running: false };
 }
 
-export function DashboardPage() {
+export function NovelListPage() {
     const { token } = theme.useToken();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { data, isLoading, isError, error } = useNovelsQuery();
     const createMutation = useCreateNovelMutation();
     const updateMutation = useUpdateNovelMutation();
@@ -48,6 +49,17 @@ export function DashboardPage() {
     const [pageSize, setPageSize] = useState(DEFAULT_PAGE_LIMIT);
     const [selectedNovelIds, setSelectedNovelIds] = useState<number[]>([]);
     const { areaRef, bodyHeight } = useTableScrollFit();
+
+    useEffect(() => {
+        if (searchParams.get('create') !== '1') {
+            return;
+        }
+        setEditing(null);
+        setFormOpen(true);
+        const next = new URLSearchParams(searchParams);
+        next.delete('create');
+        setSearchParams(next, { replace: true });
+    }, [searchParams, setSearchParams]);
 
     const filtered = useMemo(() => {
         if (!data) {
@@ -240,26 +252,37 @@ export function DashboardPage() {
 
     if (isLoading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
-                <Spin size="large" />
-            </div>
+            <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+                <Typography.Title level={4} style={{ margin: 0 }}>
+                    Danh sách truyện
+                </Typography.Title>
+                <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
+                    <Spin size="large" />
+                </div>
+            </Space>
         );
     }
 
     if (isError) {
-        return <Alert type="error" showIcon title="Không tải được danh sách truyện" description={getErrorMessage(error)} />;
+        return (
+            <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+                <Typography.Title level={4} style={{ margin: 0 }}>
+                    Danh sách truyện
+                </Typography.Title>
+                <Alert type="error" showIcon title="Không tải được danh sách truyện" description={getErrorMessage(error)} />
+            </Space>
+        );
     }
 
     return (
         <Space orientation="vertical" size={16} style={{ width: '100%' }}>
             <Typography.Title level={4} style={{ margin: 0 }}>
-                Dashboard
+                Danh sách truyện
             </Typography.Title>
 
             <Card
-                id="novels-table"
                 size="small"
-                title="Danh sách truyện"
+                title="Thư viện"
                 extra={
                     <Space wrap>
                         <Input.Search

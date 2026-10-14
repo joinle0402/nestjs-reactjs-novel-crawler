@@ -469,3 +469,135 @@ a {
 .layout-with-tts {
     padding-bottom: 52px !important;
 }
+
+.dash-page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.dash-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.dash-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.dash-stat .ant-statistic-content {
+    font-variant-numeric: tabular-nums;
+}
+
+.dash-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.9fr);
+    gap: 16px;
+    align-items: start;
+}
+
+.dash-grid--single {
+    grid-template-columns: 1fr;
+}
+
+.dash-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.dash-novel,
+.dash-job,
+.dash-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    margin: 0;
+    padding: 10px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+}
+
+.dash-novel,
+.dash-job,
+.dash-meta--button {
+    cursor: pointer;
+}
+
+.dash-novel:hover,
+.dash-job:hover,
+.dash-meta--button:hover {
+    background: var(--hover-accent-soft);
+}
+
+.dash-novel:focus-visible,
+.dash-job:focus-visible,
+.dash-meta--button:focus-visible {
+    outline: 2px solid var(--link-hover);
+    outline-offset: 1px;
+}
+
+.dash-novel__meta,
+.dash-job__body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+    gap: 2px;
+}
+
+.dash-novel .ant-space {
+    width: min(240px, 42%);
+    flex: none;
+}
+
+.dash-job__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    color: var(--text-secondary);
+}
+
+.dash-job--active .dash-job__icon {
+    color: var(--link-hover);
+}
+
+.dash-meta {
+    justify-content: space-between;
+}
+
+@media (max-width: 991px) {
+    .dash-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dash-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 575px) {
+    .dash-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .dash-novel {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .dash-novel .ant-space {
+        width: 100%;
+    }
+}
