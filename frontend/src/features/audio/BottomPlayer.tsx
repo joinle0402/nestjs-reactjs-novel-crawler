@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { Button, Dropdown, Select, Slider, Space, Typography } from 'antd';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Button, Dropdown, Popover, Select, Slider, Space, Typography } from 'antd';
 import {
     CloseOutlined,
     CustomerServiceOutlined,
@@ -54,6 +54,7 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
         setBgmId,
         selectDefaultBgm,
     } = useAudioPlayer();
+    const [playerEl, setPlayerEl] = useState<HTMLDivElement | null>(null);
     const tracksQuery = useBgmTracksQuery(Boolean(track));
     const tracks = tracksQuery.data ?? [];
     const selectDefaultBgmRef = useRef(selectDefaultBgm);
@@ -64,6 +65,26 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
         }
         selectDefaultBgmRef.current(tracksQuery.data.map((item) => item.id));
     }, [track, tracksQuery.data]);
+
+    // Đo chiều cao thật của thanh player → CSS var --player-h cho layout, thay vì padding cứng.
+    useLayoutEffect(() => {
+        const root = document.documentElement;
+        if (!playerEl) {
+            root.style.removeProperty('--player-h');
+            return;
+        }
+        const sync = () => {
+            root.style.setProperty('--player-h', `${playerEl.offsetHeight}px`);
+        };
+        sync();
+        const observer = new ResizeObserver(sync);
+        observer.observe(playerEl);
+        return () => {
+            observer.disconnect();
+            root.style.removeProperty('--player-h');
+        };
+    }, [playerEl]);
+
     const jobQuery = useCurrentTtsJobQuery();
     const job = jobQuery.data;
     const jobActive = isActiveTtsJob(job);
@@ -83,6 +104,7 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
 
     return (
         <div
+            ref={setPlayerEl}
             className={track ? `bottom-player${jobActive || crawlActive || driveActive ? ' bottom-player--with-job' : ''}` : 'bottom-player bottom-player--tts-only'}
             role="region"
             aria-label={track ? 'Trình nghe truyện' : 'Tiến độ tác vụ'}
@@ -167,26 +189,37 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
                     <Button type="text">{rate}x</Button>
                 </Dropdown>
 
+                <Popover
+                    trigger="click"
+                    placement="topRight"
+                    title="Nhạc nền"
+                    content={
+                        <div className="bottom-player__bgm-panel">
+                            <Select
+                                size="small"
+                                allowClear
+                                placeholder={tracks.length ? 'Chọn nhạc nền' : 'Chưa có nhạc nền'}
+                                aria-label="Nhạc nền"
+                                style={{ width: '100%' }}
+                                value={bgmId ?? undefined}
+                                loading={tracksQuery.isLoading}
+                                disabled={!tracks.length}
+                                options={tracks.map((item) => ({ value: item.id, label: item.name }))}
+                                onChange={(value) => setBgmId(typeof value === 'string' ? value : null)}
+                            />
+                        </div>
+                    }
+                >
+                    <Button
+                        type="text"
+                        className={`bottom-player__bgm-trigger${bgmId ? ' bottom-player__bgm-trigger--active' : ''}`}
+                        icon={<CustomerServiceOutlined />}
+                        aria-label="Nhạc nền"
+                    />
+                </Popover>
+
                 <Button type="text" icon={<CloseOutlined />} onClick={stop} aria-label="Đóng trình nghe" />
             </div>
-                </div>
-            ) : null}
-            {track ? (
-                <div className="bottom-player__bgm">
-                    <CustomerServiceOutlined className="bottom-player__bgm-icon" />
-                    <Typography.Text type="secondary">Nhạc nền</Typography.Text>
-                    <Select
-                        size="small"
-                        allowClear
-                        placeholder={tracks.length ? 'Chọn nhạc nền' : 'Chưa có nhạc nền'}
-                        aria-label="Nhạc nền"
-                        style={{ flex: 1, maxWidth: 360 }}
-                        value={bgmId ?? undefined}
-                        loading={tracksQuery.isLoading}
-                        disabled={!tracks.length}
-                        options={tracks.map((item) => ({ value: item.id, label: item.name }))}
-                        onChange={(value) => setBgmId(typeof value === 'string' ? value : null)}
-                    />
                 </div>
             ) : null}
         </div>

@@ -2,7 +2,7 @@ export const PAGE_LIMITS = [10, 20, 50, 100, 500] as const;
 export const DEFAULT_PAGE_LIMIT = 20;
 /** Giá trị gửi API khi người dùng chọn "Tất cả". URL ghi `limit=all`. */
 export const ALL_PAGE_LIMIT = 10_000;
-const PAGE_WINDOW = 20;
+const PAGE_WINDOW = 25;
 
 export function parsePageLimit(value: string | null | undefined): number {
     if (value === 'all') {
