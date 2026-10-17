@@ -47,6 +47,7 @@ class Chapter:
     tts_status: str = STATUS_PENDING
     tts_chars_total: int = 0
     tts_chars_done: int = 0
+    has_bgm: bool = False
 
 
 @dataclass
@@ -253,6 +254,7 @@ def init_db() -> None:
                 title VARCHAR(500) NOT NULL,
                 content LONGTEXT NULL,
                 mp3_path VARCHAR(2048) NULL,
+                has_bgm TINYINT(1) NOT NULL DEFAULT 0,
                 crawled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 crawl_status VARCHAR(20) NOT NULL DEFAULT 'pending',
                 tts_status VARCHAR(20) NOT NULL DEFAULT 'pending',
@@ -280,6 +282,10 @@ def init_db() -> None:
 
         if not _column_exists(conn, "chapters", "mp3_path"):
             conn.execute("ALTER TABLE chapters ADD COLUMN mp3_path VARCHAR(2048) NULL")
+        if not _column_exists(conn, "chapters", "has_bgm"):
+            conn.execute(
+                "ALTER TABLE chapters ADD COLUMN has_bgm TINYINT(1) NOT NULL DEFAULT 0"
+            )
         if not _column_exists(conn, "chapters", "crawled_at"):
             conn.execute(
                 "ALTER TABLE chapters ADD COLUMN crawled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
@@ -369,16 +375,26 @@ def upsert_chapter(
         return chapter_id
 
 
-def update_chapter_mp3(chapter_id: int, mp3_path: str) -> None:
+def update_chapter_mp3(chapter_id: int, mp3_path: str, has_bgm: bool = False) -> None:
     with get_db() as conn:
         conn.execute(
             """
             UPDATE chapters
             SET mp3_path=?, tts_status=?,
-                tts_chars_done=tts_chars_total
+                tts_chars_done=tts_chars_total,
+                has_bgm=?
             WHERE id=?
             """,
-            (mp3_path, STATUS_COMPLETED, chapter_id),
+            (mp3_path, STATUS_COMPLETED, 1 if has_bgm else 0, chapter_id),
+        )
+
+
+def set_chapter_has_bgm(chapter_id: int, has_bgm: bool) -> None:
+    """Đánh dấu MP3 của chương đã trộn sẵn nhạc nền (để player mặc định tắt nhạc)."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE chapters SET has_bgm=? WHERE id=?",
+            (1 if has_bgm else 0, chapter_id),
         )
 
 
@@ -579,6 +595,7 @@ def _row_to_chapter(row: Row) -> Chapter:
         tts_status=row["tts_status"] or STATUS_PENDING,
         tts_chars_total=int(row["tts_chars_total"] or 0),
         tts_chars_done=int(row["tts_chars_done"] or 0),
+        has_bgm=bool(row.get("has_bgm")),
     )
 
 
@@ -588,7 +605,7 @@ def get_chapters_for_novel(novel_id: int) -> list[Chapter]:
             """
             SELECT id, novel_id, chapter_site_id, chapter_number, title, content,
                    mp3_path, crawl_status, tts_status,
-                   tts_chars_total, tts_chars_done
+                   tts_chars_total, tts_chars_done, has_bgm
             FROM chapters
             WHERE novel_id = ?
             ORDER BY chapter_number

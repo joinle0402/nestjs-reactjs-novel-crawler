@@ -32,6 +32,8 @@ function formatTime(seconds: number): string {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const BGM_OFF_VALUE = '__bgm_off__';
+
 type BottomPlayerProps = {
     siderWidth: number;
 };
@@ -50,7 +52,7 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
         playPrev,
         playNext,
         stop,
-        bgmId,
+        effectiveBgmId,
         setBgmId,
         selectDefaultBgm,
     } = useAudioPlayer();
@@ -60,10 +62,14 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
     const selectDefaultBgmRef = useRef(selectDefaultBgm);
     selectDefaultBgmRef.current = selectDefaultBgm;
     useEffect(() => {
-        if (!track || !tracksQuery.data?.length) {
+        if (!track) {
             return;
         }
-        selectDefaultBgmRef.current(tracksQuery.data.map((item) => item.id));
+        const ids = tracksQuery.data?.map((item) => item.id) ?? [];
+        if (!ids.length && !track.hasBgm) {
+            return;
+        }
+        selectDefaultBgmRef.current(ids, track.hasBgm);
     }, [track, tracksQuery.data]);
 
     // Đo chiều cao thật của thanh player → CSS var --player-h cho layout, thay vì padding cứng.
@@ -197,22 +203,25 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
                         <div className="bottom-player__bgm-panel">
                             <Select
                                 size="small"
-                                allowClear
-                                placeholder={tracks.length ? 'Chọn nhạc nền' : 'Chưa có nhạc nền'}
                                 aria-label="Nhạc nền"
                                 style={{ width: '100%' }}
-                                value={bgmId ?? undefined}
+                                value={effectiveBgmId ?? BGM_OFF_VALUE}
                                 loading={tracksQuery.isLoading}
                                 disabled={!tracks.length}
-                                options={tracks.map((item) => ({ value: item.id, label: item.name }))}
-                                onChange={(value) => setBgmId(typeof value === 'string' ? value : null)}
+                                options={[
+                                    { value: BGM_OFF_VALUE, label: 'Không nhạc nền' },
+                                    ...tracks.map((item) => ({ value: item.id, label: item.name })),
+                                ]}
+                                onChange={(value) =>
+                                    setBgmId(typeof value === 'string' && value !== BGM_OFF_VALUE ? value : null)
+                                }
                             />
                         </div>
                     }
                 >
                     <Button
                         type="text"
-                        className={`bottom-player__bgm-trigger${bgmId ? ' bottom-player__bgm-trigger--active' : ''}`}
+                        className={`bottom-player__bgm-trigger${effectiveBgmId ? ' bottom-player__bgm-trigger--active' : ''}`}
                         icon={<CustomerServiceOutlined />}
                         aria-label="Nhạc nền"
                     />

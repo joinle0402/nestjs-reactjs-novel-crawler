@@ -605,22 +605,27 @@ def _apply_loudness_norm(path: Path) -> None:
         log_message(f"Lưu ý: không chuẩn hóa âm lượng ({exc}) — giữ file gốc.")
 
 
-def _mix_background_music_or_skip(voice_path: Path, *, quiet: bool = False) -> None:
-    """Trộn nhạc nền nếu ffmpeg chạy được. Lỗi nhạc nền không được hủy file giọng."""
+def _mix_background_music_or_skip(voice_path: Path, *, quiet: bool = False) -> bool:
+    """Trộn nhạc nền nếu ffmpeg chạy được. Trả về True nếu đã trộn.
+
+    Lỗi nhạc nền không được hủy file giọng: trả False và giữ file gốc.
+    """
     if not _ffmpeg_on_path():
         if not quiet:
             log_message(
                 "Lưu ý: không có ffmpeg — bỏ nhạc nền, giữ file giọng đọc. "
                 "Cài ffmpeg (winget install Gyan.FFmpeg) rồi chạy lại nếu cần nhạc nền.",
             )
-        return
+        return False
     try:
         _mix_background_music(voice_path)
+        return True
     except Exception as exc:
         if not quiet:
             log_message(
                 f"Lưu ý: không trộn được nhạc nền ({exc}) — giữ file giọng đọc.",
             )
+        return False
 
 
 def _mix_background_music(voice_path: Path) -> None:
@@ -878,6 +883,7 @@ async def _tts_chapter(
     engine: str,
     voice: str,
     rate: str,
+    use_bgm: bool = False,
     quiet: bool = False,
 ) -> Path:
     async with chapter_sem:
@@ -895,10 +901,14 @@ async def _tts_chapter(
                 rate=rate,
                 quiet=quiet,
             )
+            mixed = False
+            if use_bgm:
+                mixed = _mix_background_music_or_skip(output_path, quiet=quiet)
+            # Chuẩn hóa âm lượng sau BGM để mọi chương (có/không nhạc) cùng mức nghe.
             _apply_loudness_norm(output_path)
             if not output_path.is_file() or output_path.stat().st_size <= 0:
                 raise RuntimeError(f"Không tạo được file MP3: {output_path}")
-            update_chapter_mp3(ch.id, str(output_path))
+            update_chapter_mp3(ch.id, str(output_path), has_bgm=mixed)
             return output_path
         except Exception as exc:
             update_tts_status(ch.id, STATUS_FAILED)
@@ -914,6 +924,7 @@ async def _generate_all_mp3(
     engine: str,
     voice: str,
     rate: str,
+    use_bgm: bool = False,
     quiet: bool = False,
 ) -> tuple[list[Path], list[Chapter]]:
     chapter_sem = asyncio.Semaphore(TTS_CONCURRENCY)
@@ -934,6 +945,7 @@ async def _generate_all_mp3(
                 engine=engine,
                 voice=voice,
                 rate=rate,
+                use_bgm=use_bgm,
                 quiet=quiet,
             )
         )
@@ -1026,8 +1038,8 @@ def generate_mp3_for_novel(
 ) -> list[Path]:
     """Tạo 1 file MP3 cho mỗi chương chưa có audio hợp lệ (song song).
 
-    use_bgm=None đọc cờ cũ trên job. Tạo MP3 không trộn nhạc nền:
-    nghe chọn track riêng, upload Drive mới trộn.
+    use_bgm=None đọc bật/tắt từ tts_settings.json. Khi bật, nhạc nền được trộn
+    thẳng vào MP3 chương và chương được đánh dấu has_bgm để player không chồng thêm.
     """
     from config import load_tts_settings
 
@@ -1035,8 +1047,16 @@ def generate_mp3_for_novel(
     engine = engine or str(settings["engine"])
     voice = voice or str(settings["voice"])
     rate = rate or str(settings["rate"])
-    if use_bgm and not quiet:
-        log_message("Nhạc nền không trộn lúc tạo MP3. Chọn nhạc khi nghe hoặc khi upload Drive.")
+    if use_bgm is None:
+        use_bgm = bool(settings["bgmEnabled"])
+    mix_bgm = bool(use_bgm) and _bgm_enabled() and _ffmpeg_on_path()
+    if use_bgm and _bgm_enabled() and not mix_bgm and not quiet:
+        log_message(
+            "Lưu ý: không có ffmpeg — bỏ nhạc nền, vẫn tạo MP3 giọng đọc. "
+            "Cài ffmpeg: winget install Gyan.FFmpeg"
+        )
+    if mix_bgm and not quiet:
+        log_message(f"Nhạc nền: {BGM_PATH} ({BGM_VOLUME_DB} dB, loop={BGM_LOOP})")
 
     all_chapters = get_chapters_for_novel(novel_id)
     need_mp3 = get_chapters_without_mp3(novel_id)
@@ -1089,6 +1109,7 @@ def generate_mp3_for_novel(
                 engine=engine,
                 voice=voice,
                 rate=rate,
+                use_bgm=mix_bgm,
                 quiet=quiet,
             )
         )

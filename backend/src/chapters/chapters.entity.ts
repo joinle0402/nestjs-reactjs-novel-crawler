@@ -30,6 +30,9 @@ export class Chapter {
     @Column({ name: 'mp3_path', type: 'varchar', length: 2048, nullable: true })
     mp3Path!: string | null;
 
+    @Column({ name: 'has_bgm', type: 'boolean', default: false })
+    hasBgm!: boolean;
+
     @Column({ name: 'crawled_at', type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
     crawledAt!: Date;
 

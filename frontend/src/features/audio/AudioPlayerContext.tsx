@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
 import { getChapter, getChapterAudioUrl, getChapterByNumber, type ChapterDetail, type ChapterNeighbor } from '@/features/chapters/api/chaptersApi.ts';
 import { getBgmAudioUrl } from '@/features/bgm/api/bgmApi.ts';
 import { getPlayback, upsertPlayback } from '@/features/novels/api/novelsApi.ts';
@@ -13,6 +13,7 @@ export type PlayableTrack = {
     chapterTitle: string;
     prev: ChapterNeighbor | null;
     next: ChapterNeighbor | null;
+    hasBgm: boolean;
 };
 
 type AudioPlayerContextValue = {
@@ -22,6 +23,7 @@ type AudioPlayerContextValue = {
     duration: number;
     rate: number;
     bgmId: string | null;
+    effectiveBgmId: string | null;
     errorMessage: string | null;
     playChapter: (input: {
         novelId: number;
@@ -35,7 +37,7 @@ type AudioPlayerContextValue = {
     seek: (seconds: number) => void;
     setRate: (rate: number) => void;
     setBgmId: (id: string | null) => void;
-    selectDefaultBgm: (ids: string[]) => void;
+    selectDefaultBgm: (ids: string[], chapterHasBgm?: boolean) => void;
     playPrev: () => Promise<void>;
     playNext: () => Promise<void>;
     stop: () => void;
@@ -74,6 +76,7 @@ function toTrack(novelTitle: string, chapter: ChapterDetail): PlayableTrack {
         chapterTitle: chapter.title,
         prev: chapter.prev,
         next: chapter.next,
+        hasBgm: chapter.hasBgm,
     };
 }
 
@@ -101,6 +104,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const storedBgm = readStoredBgm();
     const bgmIdRef = useRef<string | null>(storedBgm.id);
     const explicitOffRef = useRef(storedBgm.explicitOff);
+    const bgmOverrideRef = useRef<string | null | undefined>(undefined);
     const lastSavedAtRef = useRef(0);
     const pendingResumeRef = useRef<number | null>(null);
     const syncBgmRef = useRef<(playing: boolean) => void>(() => undefined);
@@ -111,6 +115,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const [duration, setDuration] = useState(0);
     const [rate, setRateState] = useState(1.5);
     const [bgmId, setBgmIdState] = useState<string | null>(bgmIdRef.current);
+    const [bgmOverride, setBgmOverrideState] = useState<string | null | undefined>(undefined);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     useEffect(() => {
@@ -201,7 +206,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         if (!bgm) {
             return;
         }
-        const id = bgmIdRef.current;
+        const id = bgmOverrideRef.current !== undefined ? bgmOverrideRef.current : bgmIdRef.current;
         if (!id) {
             bgm.pause();
             if (bgm.dataset.track) {
@@ -413,6 +418,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
     const setBgmId = (id: string | null) => {
         const next = id && id.trim() ? id : null;
+        bgmOverrideRef.current = undefined;
+        setBgmOverrideState(undefined);
         explicitOffRef.current = !next;
         bgmIdRef.current = next;
         setBgmIdState(next);
@@ -430,16 +437,39 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         syncBgm(playing);
     };
 
-    const selectDefaultBgm = (ids: string[]) => {
+    const selectDefaultBgm = (ids: string[], chapterHasBgm = false) => {
+        const applyOverride = (value: string | null | undefined) => {
+            if (bgmOverrideRef.current === value) {
+                return;
+            }
+            bgmOverrideRef.current = value;
+            setBgmOverrideState(value);
+        };
+        const resync = () => {
+            const voice = audioRef.current;
+            const playing = Boolean(voice && trackRef.current && !voice.paused && !voice.ended);
+            syncBgm(playing);
+        };
+
+        if (chapterHasBgm) {
+            // MP3 đã trộn nhạc nền: mặc định tắt nhạc nền cho chương này (không ghi đè lựa chọn của người dùng).
+            applyOverride(null);
+            resync();
+            return;
+        }
+        applyOverride(undefined);
         if (explicitOffRef.current) {
+            resync();
             return;
         }
         const current = bgmIdRef.current;
         if (current && ids.includes(current)) {
+            resync();
             return;
         }
         const first = ids.find((id) => id.trim()) ?? null;
         if (!first) {
+            resync();
             return;
         }
         setBgmId(first);
@@ -497,6 +527,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         duration,
         rate,
         bgmId,
+        effectiveBgmId: bgmOverride !== undefined ? bgmOverride : bgmId,
         errorMessage,
         playChapter,
         resumeNovel,

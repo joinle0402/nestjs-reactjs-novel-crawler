@@ -22,6 +22,7 @@ export type ChapterListItem = {
     ttsStatus: Chapter['ttsStatus'];
     mp3Path: string | null;
     hasMp3: boolean;
+    hasBgm: boolean;
     ttsCharsTotal: number;
     ttsCharsDone: number;
 };
@@ -52,6 +53,7 @@ export class ChaptersService {
                 'chapter.crawlStatus',
                 'chapter.ttsStatus',
                 'chapter.mp3Path',
+                'chapter.hasBgm',
                 'chapter.ttsCharsTotal',
                 'chapter.ttsCharsDone',
             ])
@@ -119,6 +121,7 @@ export class ChaptersService {
             content: model.content,
             mp3Path: model.mp3Path,
             hasMp3: Boolean(model.mp3Path),
+            hasBgm: Boolean(model.hasBgm),
             crawledAt: model.crawledAt,
             crawlStatus: model.crawlStatus,
             ttsStatus: model.ttsStatus,
@@ -179,6 +182,9 @@ export class ChaptersService {
             model.content = content;
             Object.assign(model, this.crawlFieldsForContent(content));
         }
+        if (request.hasBgm !== undefined) {
+            model.hasBgm = request.hasBgm;
+        }
 
         await this.chaptersRepository.save(model);
         return this.findById(id);
@@ -237,7 +243,7 @@ export class ChaptersService {
                 chapterNumber: direction === 'prev' ? LessThan(chapter.chapterNumber) : MoreThan(chapter.chapterNumber),
             },
             order: { chapterNumber: direction === 'prev' ? 'DESC' : 'ASC' },
-            select: { id: true, chapterNumber: true, title: true, mp3Path: true },
+            select: { id: true, chapterNumber: true, title: true, mp3Path: true, hasBgm: true },
         });
         if (!neighbor) {
             return null;
@@ -247,6 +253,7 @@ export class ChaptersService {
             chapterNumber: neighbor.chapterNumber,
             title: neighbor.title,
             hasMp3: Boolean(neighbor.mp3Path),
+            hasBgm: Boolean(neighbor.hasBgm),
         };
     }
 
@@ -261,6 +268,7 @@ export class ChaptersService {
             ttsStatus: chapter.ttsStatus,
             mp3Path: chapter.mp3Path,
             hasMp3: Boolean(chapter.mp3Path),
+            hasBgm: Boolean(chapter.hasBgm),
             ttsCharsTotal: chapter.ttsCharsTotal,
             ttsCharsDone: chapter.ttsCharsDone,
         };

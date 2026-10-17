@@ -67,7 +67,7 @@ export class TtsService {
         const engine = request.engine ?? settings.engine;
         const voice = request.voice ?? settings.voice;
         const rate = request.rate ?? settings.rate;
-        const bgmEnabled = false;
+        const bgmEnabled = request.bgmEnabled ?? settings.bgmEnabled;
         throwUnless(TTS_ENGINES.includes(engine as TtsEngine), 'Engine TTS không được hỗ trợ');
         throwUnless(this.settingsService.allowedVoices(engine, settings.voice).has(voice), 'Giọng không thuộc engine đã chọn');
 

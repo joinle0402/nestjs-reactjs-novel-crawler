@@ -13,6 +13,9 @@ export class ChapterNeighbor {
 
     @ApiProperty({ description: 'Chapter kế bên đã có mp3_path' })
     hasMp3!: boolean;
+
+    @ApiProperty({ description: 'MP3 của chapter kế bên đã trộn sẵn nhạc nền' })
+    hasBgm!: boolean;
 }
 
 export class ChapterDetailResponse {
@@ -39,6 +42,9 @@ export class ChapterDetailResponse {
 
     @ApiProperty()
     hasMp3!: boolean;
+
+    @ApiProperty({ description: 'MP3 của chapter đã trộn sẵn nhạc nền' })
+    hasBgm!: boolean;
 
     @ApiProperty()
     crawledAt!: Date;

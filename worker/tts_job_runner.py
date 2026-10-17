@@ -127,7 +127,7 @@ def run_job(job_id: int) -> None:
             mark_if_running(job_id, "completed", None)
             log_message(f"[TTS job {job_id}] không có chương cần tạo")
             return
-        use_bgm = False
+        use_bgm = bool(job["bgm_enabled"])
         log_message(
             f"[TTS job {job_id}] {novel.title} scope={job['scope']} "
             f"engine={job['engine']} voice={job['voice']} rate={job['rate']} bgm={use_bgm} "

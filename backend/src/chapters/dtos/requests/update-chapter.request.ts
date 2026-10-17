@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 
 export class UpdateChapterRequest {
     @IsOptional()
@@ -26,4 +26,9 @@ export class UpdateChapterRequest {
     @IsString()
     @ApiProperty({ description: 'Nội dung chương', required: false })
     content?: string | null;
+
+    @IsOptional()
+    @IsBoolean()
+    @ApiProperty({ description: 'MP3 đã trộn sẵn nhạc nền', required: false })
+    hasBgm?: boolean;
 }

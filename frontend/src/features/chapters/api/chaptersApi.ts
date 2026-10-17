@@ -11,6 +11,7 @@ export type ChapterListItem = {
     ttsStatus: JobStatus;
     mp3Path: string | null;
     hasMp3: boolean;
+    hasBgm: boolean;
     ttsCharsTotal: number;
     ttsCharsDone: number;
 };
@@ -20,6 +21,7 @@ export type ChapterNeighbor = {
     chapterNumber: number;
     title: string;
     hasMp3: boolean;
+    hasBgm: boolean;
 };
 
 export type ChapterDetail = {
@@ -31,6 +33,7 @@ export type ChapterDetail = {
     content: string | null;
     mp3Path: string | null;
     hasMp3: boolean;
+    hasBgm: boolean;
     crawledAt: string;
     crawlStatus: JobStatus;
     ttsStatus: JobStatus;
@@ -77,6 +80,7 @@ export type UpdateChapterBody = {
     chapterNumber?: number;
     title?: string;
     content?: string | null;
+    hasBgm?: boolean;
 };
 
 export const getChaptersByNovel = (novelId: number, params: ListChaptersParams = {}) =>
