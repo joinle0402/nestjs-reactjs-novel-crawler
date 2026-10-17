@@ -141,6 +141,82 @@ a {
     animation: dot-pulse 1.6s ease-in-out infinite;
 }
 
+.novel-cell {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 1px;
+}
+
+.novel-cell__title {
+    align-self: flex-start;
+    max-width: 100%;
+    font-weight: 600;
+    color: inherit;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.novel-cell__title:hover {
+    color: var(--link-hover);
+}
+
+.novel-cell__meta {
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.novel-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.novel-progress__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.novel-progress__value {
+    font-weight: 600;
+}
+
+.novel-progress__total {
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.novel-progress__pct {
+    color: var(--text-secondary);
+}
+
+.novel-progress__failed {
+    margin-left: auto;
+    color: #ff4d4f;
+}
+
+.novel-progress .ant-progress {
+    margin: 0;
+    line-height: 1;
+}
+
+.novel-progress .ant-progress-inner {
+    background: var(--sub-bg);
+}
+
+.novel-activity {
+    color: var(--sub-text);
+}
+
 @keyframes dot-pulse {
     0%,
     100% {

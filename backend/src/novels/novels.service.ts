@@ -155,8 +155,8 @@ export class NovelsService {
         }
 
         const placeholders = ids.map(() => '?').join(', ');
-        const rows = await this.chaptersRepository.manager.query<Array<{ novelId: string | number; lastActivityAt: string | null }>>(
-            `SELECT novel_id AS novelId, DATE_FORMAT(MAX(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS lastActivityAt
+        const rows = await this.chaptersRepository.manager.query<Array<{ novelId: string | number; lastActivityAt: Date | string | null }>>(
+            `SELECT novel_id AS novelId, MAX(updated_at) AS lastActivityAt
              FROM (
                  SELECT novel_id, updated_at FROM chapters WHERE novel_id IN (${placeholders})
                  UNION ALL
