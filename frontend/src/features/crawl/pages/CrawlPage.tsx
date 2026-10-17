@@ -25,6 +25,7 @@ import {
 import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { parseRouteId } from '@/shared/lib/parseRouteId.ts';
+import { formatDateTime } from '@/shared/lib/relativeTime.ts';
 import { ListPagination } from '@/shared/ui/ListPagination.tsx';
 import { DEFAULT_PAGE_LIMIT, isRowActionTarget } from '@/shared/ui/listPagination.ts';
 import { fitTableScroll, useTableScrollFit } from '@/shared/ui/useTableScrollFit.ts';
@@ -190,7 +191,7 @@ export function CrawlPage() {
             title: 'Tạo lúc',
             dataIndex: 'createdAt',
             width: 180,
-            render: (value: string) => new Date(value).toLocaleString(),
+            render: (value: string) => formatDateTime(value),
         },
         {
             title: '',

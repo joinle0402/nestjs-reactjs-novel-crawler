@@ -6,6 +6,7 @@ import { getBgmAudioUrl, type BgmTrack } from '@/features/bgm/api/bgmApi.ts';
 import { BgmCreateDrawer } from '@/features/bgm/components/BgmCreateDrawer.tsx';
 import { useBgmTracksQuery, useDeleteBgmTrackMutation, useDeleteBgmTracksMutation } from '@/features/bgm/hooks/useBgmQueries.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
+import { formatDateTime } from '@/shared/lib/relativeTime.ts';
 import { ListPagination } from '@/shared/ui/ListPagination.tsx';
 import { DEFAULT_PAGE_LIMIT, isRowActionTarget } from '@/shared/ui/listPagination.ts';
 import { fitTableScroll, useTableScrollFit } from '@/shared/ui/useTableScrollFit.ts';
@@ -133,7 +134,7 @@ export function BgmPage() {
             title: 'Ngày thêm',
             dataIndex: 'createdAt',
             width: 180,
-            render: (value: string) => (value ? new Date(value).toLocaleString() : '—'),
+            render: (value: string) => (value ? formatDateTime(value) : '—'),
         },
         {
             title: '',

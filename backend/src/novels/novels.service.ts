@@ -161,9 +161,15 @@ export class NovelsService {
                  SELECT novel_id, updated_at FROM chapters WHERE novel_id IN (${placeholders})
                  UNION ALL
                  SELECT novel_id, updated_at FROM drive_upload_jobs WHERE novel_id IN (${placeholders})
+                 UNION ALL
+                 SELECT novel_id, updated_at FROM crawl_jobs WHERE novel_id IN (${placeholders})
+                 UNION ALL
+                 SELECT novel_id, updated_at FROM tts_jobs WHERE novel_id IN (${placeholders})
+                 UNION ALL
+                 SELECT novel_id, updated_at FROM playback_state WHERE novel_id IN (${placeholders})
              ) AS activity
              GROUP BY novel_id`,
-            [...ids, ...ids],
+            [...ids, ...ids, ...ids, ...ids, ...ids],
         );
 
         for (const row of rows) {

@@ -38,7 +38,7 @@ export class NovelListItemResponse {
     createdAt!: Date;
 
     @ApiProperty({
-        description: 'ISO 8601 — hoạt động gần nhất (chương hoặc job Drive), fallback về createdAt',
+        description: 'ISO 8601 — hoạt động gần nhất (chương, job crawl/TTS/Drive hoặc nghe truyện), fallback về createdAt',
     })
     lastActivityAt!: string;
 

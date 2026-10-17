@@ -17,6 +17,7 @@ import { ListPagination } from '@/shared/ui/ListPagination.tsx';
 import { DEFAULT_PAGE_LIMIT, isRowActionTarget } from '@/shared/ui/listPagination.ts';
 import { fitTableScroll, useTableScrollFit } from '@/shared/ui/useTableScrollFit.ts';
 import { formatDateTime, formatRelativeTime } from '@/shared/lib/relativeTime.ts';
+import { statusOf } from '@/features/novels/lib/novelStatus.ts';
 
 const SORT_OPTIONS = [
     { value: 'newest', label: 'Mới thêm' },
@@ -30,24 +31,6 @@ type SortKey = (typeof SORT_OPTIONS)[number]['value'];
 function parseSortKey(value: string | null): SortKey {
     const match = SORT_OPTIONS.find((option) => option.value === value);
     return match ? match.value : 'activity-desc';
-}
-
-function statusOf(
-    done: number,
-    failed: number,
-    total: number,
-    runningColor: string,
-): { color: string; label: string; running: boolean } {
-    if (failed > 0) {
-        return { color: '#ff4d4f', label: 'Có lỗi', running: false };
-    }
-    if (total > 0 && done >= total) {
-        return { color: '#52c41a', label: 'Hoàn tất', running: false };
-    }
-    if (done > 0) {
-        return { color: runningColor, label: 'Đang chạy', running: true };
-    }
-    return { color: '#d9d9d9', label: 'Chưa bắt đầu', running: false };
 }
 
 export function NovelListPage() {

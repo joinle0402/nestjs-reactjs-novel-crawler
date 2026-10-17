@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
-import { Alert, Button, Card, Empty, Progress, Skeleton, Space, Statistic, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Empty, Progress, Skeleton, Space, Statistic, Table, Tag, Tooltip, Typography, theme } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import {
     CloudDownloadOutlined,
     CloudUploadOutlined,
@@ -15,8 +16,9 @@ import { DRIVE_JOB_STATUS_COLOR, DRIVE_JOB_STATUS_LABEL, type DriveJob } from '@
 import { useCurrentDriveJobQuery, useDriveStatusQuery } from '@/features/drive/hooks/useDriveQueries.ts';
 import { useHealthQuery } from '@/features/health/hooks/useHealthQuery.ts';
 import type { NovelListItem } from '@/features/novels/api/novelsApi.ts';
-import { StatsProgress } from '@/features/novels/components/StatsProgress.tsx';
 import { useNovelsQuery } from '@/features/novels/hooks/useNovelsQuery.ts';
+import { statusOf } from '@/features/novels/lib/novelStatus.ts';
+import { formatDateTime, formatRelativeTime } from '@/shared/lib/relativeTime.ts';
 import { isActiveTtsJob, type TtsJob, type TtsJobStatus } from '@/features/tts/api/ttsApi.ts';
 import { useCurrentTtsJobQuery } from '@/features/tts/hooks/useTtsQueries.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
@@ -73,22 +75,19 @@ function summarize(novels: NovelListItem[]): LibrarySummary {
     );
 }
 
+const ACTIVITY_LIMIT = 8;
+
+function needsWork(novel: NovelListItem): boolean {
+    const stats = novel.stats;
+    return stats.crawlFailed > 0 || stats.ttsFailed > 0 || stats.crawled < stats.total || stats.ttsDone < stats.total;
+}
+
 function spotlight(novels: NovelListItem[]): NovelListItem[] {
-    return [...novels]
-        .sort((a, b) => {
-            const rank = (novel: NovelListItem) => {
-                const stats = novel.stats;
-                const failed = stats.crawlFailed + stats.ttsFailed;
-                const remaining = Math.max(0, stats.total - stats.crawled) + Math.max(0, stats.total - stats.ttsDone);
-                return failed * 10000 + remaining;
-            };
-            const diff = rank(b) - rank(a);
-            if (diff !== 0) {
-                return diff;
-            }
-            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        })
-        .slice(0, 5);
+    const open = novels.filter(needsWork);
+    const pool = open.length > 0 ? open : novels;
+    return [...pool]
+        .sort((a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime())
+        .slice(0, ACTIVITY_LIMIT);
 }
 
 function crawlDetail(job: CrawlJob): string {
@@ -111,6 +110,7 @@ function driveDetail(job: DriveJob): string {
 }
 
 export function DashboardPage() {
+    const { token } = theme.useToken();
     const navigate = useNavigate();
     const novelsQuery = useNovelsQuery();
     const crawlQuery = useCurrentCrawlJobQuery();
@@ -128,6 +128,60 @@ export function DashboardPage() {
     const openNovel = (novelId: number) => {
         navigate(`/novels/${novelId}`);
     };
+
+    const libraryColumns: ColumnsType<NovelListItem> = [
+        {
+            title: 'Truyện',
+            dataIndex: 'title',
+            ellipsis: true,
+            render: (title: string, novel) => (
+                <div className="dash-table__novel">
+                    <Typography.Text strong ellipsis>
+                        {title}
+                    </Typography.Text>
+                    <Typography.Text type="secondary" ellipsis>
+                        {novel.author || 'Chưa có tác giả'}
+                    </Typography.Text>
+                </div>
+            ),
+        },
+        {
+            title: 'Crawl',
+            key: 'crawl',
+            width: 96,
+            render: (_, novel) => (
+                <StatusCount
+                    done={novel.stats.crawled}
+                    failed={novel.stats.crawlFailed}
+                    total={novel.stats.total}
+                    runningColor={token.colorPrimary}
+                />
+            ),
+        },
+        {
+            title: 'TTS',
+            key: 'tts',
+            width: 96,
+            render: (_, novel) => (
+                <StatusCount
+                    done={novel.stats.ttsDone}
+                    failed={novel.stats.ttsFailed}
+                    total={novel.stats.total}
+                    runningColor={token.colorPrimary}
+                />
+            ),
+        },
+        {
+            title: 'Hoạt động',
+            dataIndex: 'lastActivityAt',
+            width: 118,
+            render: (value: string) => (
+                <Tooltip title={formatDateTime(value)}>
+                    <span>{formatRelativeTime(value)}</span>
+                </Tooltip>
+            ),
+        },
+    ];
 
     return (
         <div className="dash-page">
@@ -200,33 +254,17 @@ export function DashboardPage() {
                             </Button>
                         </Empty>
                     ) : (
-                        <div className="dash-stack">
-                            {rows.map((novel) => (
-                                <div
-                                    key={novel.id}
-                                    className="dash-novel"
-                                    role="link"
-                                    tabIndex={0}
-                                    onClick={() => openNovel(novel.id)}
-                                    onKeyDown={(event) => {
-                                        if (event.key === 'Enter' || event.key === ' ') {
-                                            event.preventDefault();
-                                            openNovel(novel.id);
-                                        }
-                                    }}
-                                >
-                                    <div className="dash-novel__meta">
-                                        <Typography.Text strong ellipsis>
-                                            {novel.title}
-                                        </Typography.Text>
-                                        <Typography.Text type="secondary" ellipsis>
-                                            {novel.author || 'Chưa có tác giả'}
-                                        </Typography.Text>
-                                    </div>
-                                    <StatsProgress stats={novel.stats} size="small" />
-                                </div>
-                            ))}
-                        </div>
+                        <Table<NovelListItem>
+                            rowKey="id"
+                            size="small"
+                            columns={libraryColumns}
+                            dataSource={rows}
+                            pagination={false}
+                            onRow={(novel) => ({
+                                style: { cursor: 'pointer' },
+                                onClick: () => openNovel(novel.id),
+                            })}
+                        />
                     )}
                 </Card>
                 )}
@@ -350,6 +388,33 @@ function driveColor(
         return 'warning';
     }
     return 'default';
+}
+
+function StatusCount({
+    done,
+    failed,
+    total,
+    runningColor,
+}: {
+    done: number;
+    failed: number;
+    total: number;
+    runningColor: string;
+}) {
+    const { color, label, running } = statusOf(done, failed, total, runningColor);
+    return (
+        <Tooltip title={`${label}: ${done}/${total}`}>
+            <span className="status-count">
+                <span
+                    className={running ? 'status-dot status-dot--running' : 'status-dot'}
+                    style={{ background: color }}
+                />
+                <span>
+                    {done}/{total}
+                </span>
+            </span>
+        </Tooltip>
+    );
 }
 
 function StatCard({

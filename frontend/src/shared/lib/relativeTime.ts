@@ -32,12 +32,8 @@ export function formatDateTime(value: string | number | Date): string {
     if (Number.isNaN(date.getTime())) {
         return '';
     }
-    return date.toLocaleString('vi-VN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-    });
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const datePart = `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+    const timePart = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    return `${datePart} ${timePart}`;
 }

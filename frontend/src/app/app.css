@@ -509,7 +509,6 @@ a {
     gap: 4px;
 }
 
-.dash-novel,
 .dash-job,
 .dash-meta {
     display: flex;
@@ -526,26 +525,22 @@ a {
     font: inherit;
 }
 
-.dash-novel,
 .dash-job,
 .dash-meta--button {
     cursor: pointer;
 }
 
-.dash-novel:hover,
 .dash-job:hover,
 .dash-meta--button:hover {
     background: var(--hover-accent-soft);
 }
 
-.dash-novel:focus-visible,
 .dash-job:focus-visible,
 .dash-meta--button:focus-visible {
     outline: 2px solid var(--link-hover);
     outline-offset: 1px;
 }
 
-.dash-novel__meta,
 .dash-job__body {
     display: flex;
     flex-direction: column;
@@ -554,9 +549,11 @@ a {
     gap: 2px;
 }
 
-.dash-novel .ant-space {
-    width: min(240px, 42%);
-    flex: none;
+.dash-table__novel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 2px;
 }
 
 .dash-job__icon {
@@ -588,14 +585,5 @@ a {
 @media (max-width: 575px) {
     .dash-stats {
         grid-template-columns: 1fr;
-    }
-
-    .dash-novel {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .dash-novel .ant-space {
-        width: 100%;
     }
 }
