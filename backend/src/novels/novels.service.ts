@@ -29,7 +29,8 @@ export class NovelsService {
         const novels = await this.novelsRepository.find({
             order: { id: 'DESC' },
         });
-        const statsByNovelId = await this.getStatsByNovelIds(novels.map((novel) => novel.id));
+        const ids = novels.map((novel) => novel.id);
+        const [statsByNovelId, lastActivityByNovelId] = await Promise.all([this.getStatsByNovelIds(ids), this.getLastActivityByNovelIds(ids)]);
 
         return novels.map((novel) => ({
             id: novel.id,
@@ -38,6 +39,7 @@ export class NovelsService {
             author: novel.author,
             summary: novel.summary,
             createdAt: novel.createdAt,
+            lastActivityAt: (lastActivityByNovelId.get(novel.id) ?? novel.createdAt).toISOString(),
             stats: statsByNovelId.get(novel.id) ?? toStatsCounts(),
         }));
     }
@@ -144,6 +146,33 @@ export class NovelsService {
             statsByNovelId.set(Number(row.novelId), toStatsCounts(row));
         }
         return statsByNovelId;
+    }
+
+    private async getLastActivityByNovelIds(ids: number[]): Promise<Map<number, Date>> {
+        const lastActivityByNovelId = new Map<number, Date>();
+        if (ids.length === 0) {
+            return lastActivityByNovelId;
+        }
+
+        const placeholders = ids.map(() => '?').join(', ');
+        const rows = await this.chaptersRepository.manager.query<Array<{ novelId: string | number; lastActivityAt: string | null }>>(
+            `SELECT novel_id AS novelId, DATE_FORMAT(MAX(updated_at), '%Y-%m-%dT%H:%i:%sZ') AS lastActivityAt
+             FROM (
+                 SELECT novel_id, updated_at FROM chapters WHERE novel_id IN (${placeholders})
+                 UNION ALL
+                 SELECT novel_id, updated_at FROM drive_upload_jobs WHERE novel_id IN (${placeholders})
+             ) AS activity
+             GROUP BY novel_id`,
+            [...ids, ...ids],
+        );
+
+        for (const row of rows) {
+            const parsed = row.lastActivityAt ? new Date(row.lastActivityAt) : null;
+            if (parsed && !Number.isNaN(parsed.getTime())) {
+                lastActivityByNovelId.set(Number(row.novelId), parsed);
+            }
+        }
+        return lastActivityByNovelId;
     }
 
     async getPlayback(id: number): Promise<PlaybackState | null> {

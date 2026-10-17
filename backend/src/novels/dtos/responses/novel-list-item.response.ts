@@ -37,6 +37,11 @@ export class NovelListItemResponse {
     @ApiProperty()
     createdAt!: Date;
 
+    @ApiProperty({
+        description: 'ISO 8601 — hoạt động gần nhất (chương hoặc job Drive), fallback về createdAt',
+    })
+    lastActivityAt!: string;
+
     @ApiProperty({ type: NovelStatsCounts })
     stats!: NovelStatsCounts;
 }

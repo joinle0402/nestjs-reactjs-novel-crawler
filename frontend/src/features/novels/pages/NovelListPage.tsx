@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Empty, Input, Modal, Space, Spin, Table, Tooltip, Typography, message, theme } from 'antd';
+import { Alert, Button, Card, Empty, Input, Modal, Select, Space, Spin, Table, Tooltip, Typography, message, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -16,6 +16,21 @@ import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { ListPagination } from '@/shared/ui/ListPagination.tsx';
 import { DEFAULT_PAGE_LIMIT, isRowActionTarget } from '@/shared/ui/listPagination.ts';
 import { fitTableScroll, useTableScrollFit } from '@/shared/ui/useTableScrollFit.ts';
+import { formatDateTime, formatRelativeTime } from '@/shared/lib/relativeTime.ts';
+
+const SORT_OPTIONS = [
+    { value: 'newest', label: 'Mới thêm' },
+    { value: 'activity-desc', label: 'Hoạt động gần nhất' },
+    { value: 'title-asc', label: 'Tên A→Z' },
+    { value: 'title-desc', label: 'Tên Z→A' },
+] as const;
+
+type SortKey = (typeof SORT_OPTIONS)[number]['value'];
+
+function parseSortKey(value: string | null): SortKey {
+    const match = SORT_OPTIONS.find((option) => option.value === value);
+    return match ? match.value : 'activity-desc';
+}
 
 function statusOf(
     done: number,
@@ -46,6 +61,7 @@ export function NovelListPage() {
     const syncMutation = useSyncNovelChaptersMutation();
     const [syncingId, setSyncingId] = useState<number | null>(null);
     const [search, setSearch] = useState('');
+    const [sort, setSort] = useState<SortKey>(() => parseSortKey(searchParams.get('sort')));
     const [formOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<NovelListItem | null>(null);
     const [page, setPage] = useState(1);
@@ -78,12 +94,39 @@ export function NovelListPage() {
         );
     }, [data, search]);
 
-    const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+    const sorted = useMemo(() => {
+        if (sort === 'newest') {
+            return filtered;
+        }
+        const rows = [...filtered];
+        if (sort === 'activity-desc') {
+            rows.sort((a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime());
+        } else if (sort === 'title-asc') {
+            rows.sort((a, b) => a.title.localeCompare(b.title, 'vi'));
+        } else if (sort === 'title-desc') {
+            rows.sort((a, b) => b.title.localeCompare(a.title, 'vi'));
+        }
+        return rows;
+    }, [filtered, sort]);
+
+    const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
     const currentPage = Math.min(page, pageCount);
     const pageRows = useMemo(() => {
         const start = (currentPage - 1) * pageSize;
-        return filtered.slice(start, start + pageSize);
-    }, [currentPage, filtered, pageSize]);
+        return sorted.slice(start, start + pageSize);
+    }, [currentPage, sorted, pageSize]);
+
+    const handleSortChange = (value: SortKey) => {
+        setSort(value);
+        setPage(1);
+        const next = new URLSearchParams(searchParams);
+        if (value === 'newest') {
+            next.delete('sort');
+        } else {
+            next.set('sort', value);
+        }
+        setSearchParams(next, { replace: true });
+    };
 
     const openCreate = () => {
         setEditing(null);
@@ -192,6 +235,16 @@ export function NovelListPage() {
             width: 160,
             ellipsis: true,
             render: (author: string | null) => author || '—',
+        },
+        {
+            title: 'Hoạt động',
+            dataIndex: 'lastActivityAt',
+            width: 110,
+            render: (value: string) => (
+                <Tooltip title={formatDateTime(value)}>
+                    <span>{formatRelativeTime(value)}</span>
+                </Tooltip>
+            ),
         },
         {
             title: 'Chương',
@@ -326,6 +379,13 @@ export function NovelListPage() {
                             }}
                             style={{ width: 240 }}
                         />
+                        <Select<SortKey>
+                            value={sort}
+                            onChange={handleSortChange}
+                            options={SORT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                            style={{ width: 180 }}
+                            aria-label="Sắp xếp danh sách truyện"
+                        />
                         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
                             Thêm truyện
                         </Button>
@@ -366,7 +426,7 @@ export function NovelListPage() {
                         <ListPagination
                             current={currentPage}
                             pageSize={pageSize}
-                            total={filtered.length}
+                            total={sorted.length}
                             totalLabel={(total) => `${total} truyện`}
                             onChange={(nextPage, nextSize) => {
                                 if (nextSize !== pageSize) {

@@ -15,6 +15,7 @@ export type NovelListItem = {
     author: string | null;
     summary: string | null;
     createdAt: string;
+    lastActivityAt: string;
     stats: NovelStatsCounts;
 };
 
