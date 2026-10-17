@@ -183,7 +183,7 @@ export function TtsRunModal({ open, novelId, request, onClose }: TtsRunModalProp
                             validateStatus={customize && rateApplies && rate.trim() && !rateValid ? 'error' : undefined}
                             help={
                                 !rateApplies
-                                    ? 'VieNeu đọc theo nhịp của giọng.'
+                                    ? 'Engine offline đọc theo nhịp của giọng.'
                                     : customize && rate.trim() && !rateValid
                                       ? 'Dạng +50% hoặc -20%'
                                       : undefined

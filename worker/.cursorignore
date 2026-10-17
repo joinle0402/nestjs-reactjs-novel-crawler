@@ -22,4 +22,5 @@ __pycache__/
 *.py[cod]
 .venv/
 .venv-vieneu/
+.venv-zerotts/
 venv/

@@ -27,7 +27,7 @@ Crawl may call TTS when `run_tts=True`. Crawl job rules live in the `crawler-wor
 
 - Scopes: `missing`, `failed`, `chapters` (`TTS_SCOPES`).
 - Job statuses: `pending`, `running`, `stopped`, `completed`, `failed` (`TTS_JOB_STATUSES`).
-- Engines: `edge-tts` (default) and `vieneu` (`TTS_ENGINES`). Voice lists stay in `voicesForEngine` in `backend/src/tts/entities/tts-job.entity.ts`. Do not copy the voice list into this skill.
+- Engines: `edge-tts` (default), `vieneu`, and `zerotts` (`TTS_ENGINES`). Voice lists stay in `voicesForEngine` in `backend/src/tts/entities/tts-job.entity.ts`. Do not copy the voice list into this skill.
 - One active TTS worker at a time. Respect `tts_worker.lock`.
 - Skip chapters that already have a valid MP3, and chapters with no content.
 - `_normalize_tts_text` only strips tags, URLs, control characters, emoji, and known junk. Do not rewrite, summarize, or paraphrase the story.
@@ -49,6 +49,7 @@ API surface on `TtsController`: `getSettings`, `updateSettings`, `savedSample`, 
 | Which chapters get audio | `generate_mp3_for_novel` |
 | Per-chapter synthesis and chunks | `_tts_chapter`, `_tts_chapter_content`; edge-tts `_split_text_into_chunks`; VieNeu `_split_vieneu_chunks` |
 | VieNeu process | `worker/tts_vieneu.py` |
+| ZeroTTS process | `worker/tts_zerotts.py` |
 | Chapter range parsing | `backend/src/tts/chapter-range.ts` and `worker/chapter_range.py` |
 | Background music library | `backend/src/bgm/`, `worker/bgm_library.py`; playback in `AudioPlayerContext` |
 
@@ -76,3 +77,4 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-10-01 — VieNeu packing now quote-aware (dialogue glue drops the sentence cap, char budget governs); `VIENEU_CHUNK_PAUSE_MS` 250→350. Reference voice `hoaimy.wav` regenerated from edge-tts (26.9s sample).
 - 2026-10-14 — Generation writes voice-only MP3. Library tracks play beside the voice; Drive mixes the selected track before upload.
 - 2026-10-14 — Player BGM selector sits under the bottom bar and defaults to the first library track. `Just_Stay_Aakash_Gandhi.mp3` is imported into `worker/bgm/catalog.json` once.
+- 2026-10-17 — Added `zerotts` engine (ZeroTTS, ONNX CPU): own `.venv-zerotts` + `tts_zerotts.py` process, shares the VieNeu sentence chunking and `VIENEU_CHUNK_*`/pause invariants; rate % ignored like VieNeu.

@@ -77,7 +77,7 @@ BGM_FADE_IN_MS = 2000
 BGM_FADE_OUT_MS = 3000
 BGM_EXPORT_BITRATE = "128k"
 
-# TTS — engine và giọng nằm ở tts_settings.json (edge-tts hoặc vieneu).
+# TTS — engine và giọng nằm ở tts_settings.json (edge-tts, vieneu hoặc zerotts).
 # Giọng, tốc độ và bật/tắt nhạc nền chỉ nằm ở file này.
 # Web (Cài đặt) và console cùng đọc/ghi; BGM_PATH bên trên vẫn là file nhạc.
 TTS_SETTINGS_PATH = WORKER_DIR / "tts_settings.json"
@@ -149,7 +149,7 @@ ENABLE_TTS_CHUNK = True
 TTS_CHUNK_SIZE = 3000  # ký tự mỗi chunk; khoảng 2500–4000 ít phiên hơn mà vẫn ổn định
 TTS_CHUNK_CONCURRENCY = 1  # số chunk TTS song song trong 1 chương
 
-# VieNeu: gói theo câu. Edge-TTS không dùng các hằng này.
+# VieNeu/ZeroTTS: gói theo câu. Edge-TTS không dùng các hằng này.
 VIENEU_CHUNK_MAX_CHARS = 700
 VIENEU_CHUNK_MAX_SENTENCES = 3
 VIENEU_CHUNK_SHORT_CHARS = 80

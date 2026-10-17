@@ -21,6 +21,12 @@ const DEFAULTS: TtsSettings = {
     bgmEnabled: true,
 };
 
+const ENGINE_LABELS: Record<TtsEngine, string> = {
+    'edge-tts': 'edge-tts',
+    vieneu: 'VieNeu (offline)',
+    zerotts: 'ZeroTTS (offline)',
+};
+
 export function resolveWorkerDir(): string {
     const candidates = [path.resolve(process.cwd(), 'worker'), path.resolve(process.cwd(), '..', 'worker')];
     return candidates.find((dir) => existsSync(path.join(dir, 'config.py'))) ?? candidates[1];
@@ -71,7 +77,7 @@ export class TtsSettingsService {
 
     allowedVoices(engine: string, currentVoice?: string): Set<string> {
         const allowed = new Set(voicesForEngine(engine).map((voice) => voice.id));
-        if (engine !== 'vieneu' && currentVoice) {
+        if (engine === 'edge-tts' && currentVoice) {
             allowed.add(currentVoice);
         }
         return allowed;
@@ -80,8 +86,8 @@ export class TtsSettingsService {
     private engineOptions(): { id: TtsEngine; label: string; rateApplies: boolean; voices: { id: string; label: string }[] }[] {
         return TTS_ENGINES.map((engine) => ({
             id: engine,
-            label: engine === 'vieneu' ? 'VieNeu (offline)' : 'edge-tts',
-            rateApplies: engine !== 'vieneu',
+            label: ENGINE_LABELS[engine] ?? engine,
+            rateApplies: engine === 'edge-tts',
             voices: voicesForEngine(engine).map((voice) => ({ ...voice })),
         }));
     }

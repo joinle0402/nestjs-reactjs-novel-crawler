@@ -31,8 +31,8 @@ export type TtsSampleFile = {
 /** Tên file phải khớp cache_filename() trong worker/tts_sample.py. */
 export function ttsSampleCacheName(engine: string, voice: string, rate: string): string {
     const voicePart = voice.replace(INVALID_FILENAME, '_');
-    if (engine === 'vieneu') {
-        return `vieneu__${voicePart}.mp3`;
+    if (engine === 'vieneu' || engine === 'zerotts') {
+        return `${engine}__${voicePart}.mp3`;
     }
     const ratePart = rate.replace('+', 'plus').replace('-', 'minus').replace('%', '');
     return `edge-tts__${voicePart}__${ratePart}.mp3`;
@@ -113,7 +113,7 @@ export class TtsSampleService {
         if (fileReady(filePath)) {
             return filePath;
         }
-        await this.assertVieNeuIdle(engine);
+        await this.assertOfflineEngineIdle(engine);
         await mkdir(path.dirname(filePath), { recursive: true });
         const partPath = filePath.replace(/\.mp3$/i, '.part.mp3');
         this.logger.log(`Lưu mẫu giọng engine=${engine} voice=${voice}`);
@@ -134,7 +134,7 @@ export class TtsSampleService {
     }
 
     private async synthesizeTemp(engine: string, voice: string, rate: string, text: string): Promise<string> {
-        await this.assertVieNeuIdle(engine);
+        await this.assertOfflineEngineIdle(engine);
         const dir = path.join(os.tmpdir(), 'novel-crawler-tts-samples');
         await mkdir(dir, { recursive: true });
         const output = path.join(dir, `${randomUUID()}.mp3`);
@@ -153,14 +153,15 @@ export class TtsSampleService {
         return output;
     }
 
-    private async assertVieNeuIdle(engine: string): Promise<void> {
-        if (engine !== 'vieneu') {
+    private async assertOfflineEngineIdle(engine: string): Promise<void> {
+        if (engine !== 'vieneu' && engine !== 'zerotts') {
             return;
         }
         const active = await this.jobsRepository.findOne({
             where: [{ status: 'pending' }, { status: 'running' }],
         });
-        throwIf(active, 'Đang tạo audio. Nghe thử VieNeu sau khi job xong để tránh tải model hai lần.');
+        const label = engine === 'zerotts' ? 'ZeroTTS' : 'VieNeu';
+        throwIf(active, `Đang tạo audio. Nghe thử ${label} sau khi job xong để tránh tải model hai lần.`);
     }
 
     private async runPython(engine: string, voice: string, rate: string, text: string, output: string): Promise<void> {

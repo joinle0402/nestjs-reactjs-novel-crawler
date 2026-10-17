@@ -157,7 +157,7 @@ export function TtsSettingsPage() {
         <Card title="Cài đặt TTS" style={{ maxWidth: 640 }}>
             <Typography.Paragraph type="secondary">
                 Mặc định cho lần tạo audio sau. Popup trên trang truyện có thể sửa riêng cho một lần chạy.
-                VieNeu chạy offline trên máy này; lần đầu tải model có thể mất vài phút.
+                VieNeu và ZeroTTS chạy offline trên máy này; lần đầu tải model có thể mất vài phút.
                 Nhạc nền chọn lúc nghe hoặc lúc upload Drive.
             </Typography.Paragraph>
             {settingsQuery.isError ? (
@@ -235,8 +235,8 @@ export function TtsSettingsPage() {
                         <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
                             {sampleText.trim() === DEFAULT_SAMPLE
                                 ? 'Đang mở mẫu đã lưu...'
-                                : engine === 'vieneu'
-                                  ? 'Đang tạo mẫu. VieNeu có thể cần vài phút nếu model chưa sẵn sàng.'
+                                : engine === 'vieneu' || engine === 'zerotts'
+                                  ? 'Đang tạo mẫu. Engine offline có thể cần vài phút nếu model chưa sẵn sàng.'
                                   : 'Đang tạo mẫu...'}
                         </Typography.Paragraph>
                     ) : null}

@@ -18,6 +18,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 from tts import synthesize_clip
 from tts_vieneu_client import close_vieneu
+from tts_zerotts_client import close_zerotts
 from log_utils import log_message
 
 # Đổi câu thì sửa cả TTS_SAVED_SAMPLE_TEXT trong tts-sample.service.ts.
@@ -29,8 +30,8 @@ _EDGE_RATES = ("+50%", "+0%")
 
 def cache_filename(engine: str, voice: str, rate: str) -> str:
     voice_part = _INVALID_FILENAME.sub("_", voice)
-    if engine == "vieneu":
-        return f"vieneu__{voice_part}.mp3"
+    if engine in ("vieneu", "zerotts"):
+        return f"{engine}__{voice_part}.mp3"
     rate_part = rate.replace("+", "plus").replace("-", "minus").replace("%", "")
     return f"edge-tts__{voice_part}__{rate_part}.mp3"
 
@@ -76,8 +77,12 @@ def fill_cache(engine: str | None = None) -> None:
         if not engine or engine == "vieneu":
             for voice in _voice_ids("VIENEU_VOICES"):
                 _write_one("vieneu", voice, "+0%")
+        if not engine or engine == "zerotts":
+            for voice in _voice_ids("ZEROTTS_VOICES"):
+                _write_one("zerotts", voice, "+0%")
     finally:
         close_vieneu()
+        close_zerotts()
 
 
 def main() -> None:
@@ -99,6 +104,7 @@ def main() -> None:
         synthesize_clip(args.text, output, engine=args.engine, voice=args.voice, rate=args.rate)
     finally:
         close_vieneu()
+        close_zerotts()
     if not output.is_file() or output.stat().st_size == 0:
         raise SystemExit("Không tạo được file âm thanh")
 

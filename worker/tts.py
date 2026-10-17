@@ -14,6 +14,7 @@ from typing import Callable
 import edge_tts
 
 from tts_vieneu_client import close_vieneu, synthesize_vieneu
+from tts_zerotts_client import close_zerotts, synthesize_zerotts
 from log_utils import format_duration, format_elapsed, log_message
 from config import (
     BGM_EXPORT_BITRATE,
@@ -91,6 +92,9 @@ _JUNK_PHRASES = (
     SELECTORS["loading_text"],
 )
 _VIENEU_CUE_RE = re.compile(r"\[(?:cười|thở dài|hắng giọng)\]", re.IGNORECASE)
+
+# Engine offline chạy model trong process riêng (Python >= 3.10), dùng chung cách chia câu.
+OFFLINE_ENGINES = ("vieneu", "zerotts")
 
 
 async def _run_blocking(func, *args):
@@ -383,6 +387,7 @@ async def _write_vieneu_chunks(
     output_path: Path,
     chunk_sem: asyncio.Semaphore,
     *,
+    engine: str = "vieneu",
     voice: str,
     rate: str,
     on_chunk_done: Callable[[int], None] | None = None,
@@ -391,7 +396,7 @@ async def _write_vieneu_chunks(
         raise ValueError("Không có đoạn nào để đọc")
     if len(chunks) == 1:
         await _text_to_mp3_with_retry(
-            chunks[0], output_path, engine="vieneu", voice=voice, rate=rate
+            chunks[0], output_path, engine=engine, voice=voice, rate=rate
         )
         if on_chunk_done:
             on_chunk_done(len(chunks[0]))
@@ -409,7 +414,7 @@ async def _write_vieneu_chunks(
                     chunk_text,
                     chunk_path,
                     chunk_sem,
-                    engine="vieneu",
+                    engine=engine,
                     voice=voice,
                     rate=rate,
                     on_chunk_done=on_chunk_done,
@@ -430,6 +435,9 @@ async def _text_to_mp3(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if engine == "vieneu":
         await _run_blocking(synthesize_vieneu, text, output_path, voice)
+        return
+    if engine == "zerotts":
+        await _run_blocking(synthesize_zerotts, text, output_path, voice)
         return
     communicate = edge_tts.Communicate(text, voice, rate=rate)
     await communicate.save(str(output_path))
@@ -791,7 +799,7 @@ async def _tts_chapter_content(
     content = _normalize_tts_text(content)
     if not content:
         raise ValueError("Nội dung chương rỗng sau khi chuẩn hóa")
-    if engine == "vieneu":
+    if engine in OFFLINE_ENGINES:
         content = _prepare_vieneu_speech(content)
         if not content:
             raise ValueError("Nội dung chương rỗng sau khi chuẩn hóa")
@@ -810,6 +818,7 @@ async def _tts_chapter_content(
             chunks,
             output_path,
             chunk_sem,
+            engine=engine,
             voice=voice,
             rate=rate,
             on_chunk_done=_on_vieneu_chunk_done,
@@ -956,12 +965,13 @@ def synthesize_clip(
     normalized = _normalize_tts_text(text)
     if not normalized:
         raise ValueError("Văn bản thử giọng rỗng sau khi chuẩn hóa")
-    if engine == "vieneu":
+    if engine in OFFLINE_ENGINES:
         asyncio.run(
             _write_vieneu_chunks(
                 _split_vieneu_chunks(_prepare_vieneu_speech(normalized)),
                 output_path,
                 asyncio.Semaphore(TTS_CHUNK_CONCURRENCY),
+                engine=engine,
                 voice=voice,
                 rate=rate,
             )
@@ -980,12 +990,13 @@ def chapter_to_mp3(text: str, output_path: Path) -> None:
     engine = str(settings["engine"])
     voice = str(settings["voice"])
     rate = str(settings["rate"])
-    if engine == "vieneu":
+    if engine in OFFLINE_ENGINES:
         asyncio.run(
             _write_vieneu_chunks(
                 _split_vieneu_chunks(_prepare_vieneu_speech(text)),
                 output_path,
                 asyncio.Semaphore(TTS_CHUNK_CONCURRENCY),
+                engine=engine,
                 voice=voice,
                 rate=rate,
             )
@@ -1061,8 +1072,8 @@ def generate_mp3_for_novel(
     if ENABLE_TTS_CHUNK:
         chunk_info = f", chunk concurrency={TTS_CHUNK_CONCURRENCY}"
     if not quiet:
-        if engine == "vieneu":
-            log_message(f"Tạo MP3 cho {len(chapters)} chương (VieNeu, voice={voice}{chunk_info})...")
+        if engine in OFFLINE_ENGINES:
+            log_message(f"Tạo MP3 cho {len(chapters)} chương ({engine}, voice={voice}{chunk_info})...")
         else:
             log_message(
                 f"Tạo MP3 cho {len(chapters)} chương "
@@ -1083,6 +1094,7 @@ def generate_mp3_for_novel(
         )
     except KeyboardInterrupt:
         close_vieneu()
+        close_zerotts()
         reset_processing_tts_chapters(novel_id)
         if not quiet:
             log_message("[TTS] Đã dừng. Chạy lại để resume các chương chưa hoàn thành.")

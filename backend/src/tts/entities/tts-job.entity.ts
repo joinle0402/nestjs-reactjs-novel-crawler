@@ -7,7 +7,7 @@ export type TtsScope = (typeof TTS_SCOPES)[number];
 export const TTS_JOB_STATUSES = ['pending', 'running', 'stopped', 'completed', 'failed'] as const;
 export type TtsJobStatus = (typeof TTS_JOB_STATUSES)[number];
 
-export const TTS_ENGINES = ['edge-tts', 'vieneu'] as const;
+export const TTS_ENGINES = ['edge-tts', 'vieneu', 'zerotts'] as const;
 export type TtsEngine = (typeof TTS_ENGINES)[number];
 
 export const TTS_ENGINE = 'edge-tts';
@@ -47,8 +47,26 @@ export const VIENEU_VOICES: { id: string; label: string }[] = [
     { id: 'Quốc Tuấn', label: 'Quốc Tuấn — nam, Bắc, tự nhiên' },
 ];
 
+/** Tên truyền vào ZeroTTS `synthesize(voice=...)`. maichi là giọng mặc định. */
+export const ZEROTTS_VOICES: { id: string; label: string }[] = [
+    { id: 'maichi', label: 'Mai Chi — nữ, trẻ, kể chuyện' },
+    { id: 'baotrang', label: 'Bảo Trang — nữ, tin tức' },
+    { id: 'kimoanh', label: 'Kim Oanh — nữ, kể chuyện, ấm áp' },
+    { id: 'hamy', label: 'Hà My — nữ, biểu cảm' },
+    { id: 'giahuy', label: 'Gia Huy — nam, kể chuyện, trầm ấm' },
+    { id: 'huuduc', label: 'Hữu Đức — nam, lớn tuổi, điềm đạm' },
+    { id: 'quangminh', label: 'Quang Minh — nam, tin tức, dứt khoát' },
+    { id: 'tiendat', label: 'Tiến Đạt — nam, bình luận, sôi nổi' },
+];
+
 export function voicesForEngine(engine: string): { id: string; label: string }[] {
-    return engine === 'vieneu' ? VIENEU_VOICES : EDGE_TTS_VOICES;
+    if (engine === 'vieneu') {
+        return VIENEU_VOICES;
+    }
+    if (engine === 'zerotts') {
+        return ZEROTTS_VOICES;
+    }
+    return EDGE_TTS_VOICES;
 }
 
 @Entity('tts_jobs')

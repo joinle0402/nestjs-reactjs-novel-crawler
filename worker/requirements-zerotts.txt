@@ -1,0 +1,5 @@
+# Cài vào worker/.venv-zerotts bằng Python >= 3.9.
+# Worker chính vẫn chạy Python 3.8 và gọi môi trường này qua tts_zerotts.py.
+# ZeroTTS chạy ONNX trên CPU, không cần torch. Model (~900 MB) tải từ Hugging Face
+# về cache HF_HOME ở lần chạy đầu.
+zerotts>=0.1.2
