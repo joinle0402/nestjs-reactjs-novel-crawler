@@ -125,7 +125,7 @@ export function CrawlTaskDrawer({ draft, blocked, onClose, onSaved }: CrawlTaskD
                                 Cào lại chương lỗi ({lookup?.failed ?? 0})
                             </Radio>
                             <Radio value="refresh" disabled={!lookup?.novelId}>
-                                Cập nhật danh sách chương mới (quét list chương trên web, cào các chương chưa có)
+                                Cập nhật danh sách chương mới
                             </Radio>
                         </Space>
                     </Radio.Group>

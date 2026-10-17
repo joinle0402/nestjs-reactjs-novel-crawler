@@ -10,6 +10,8 @@ import { PlaybackState } from './entities/playback-state.entity';
 import { NovelStatsResponse } from './dtos/responses/novel-stats.response';
 import { NovelListItemResponse, NovelStatsCounts, toNovelStatsResponse, toStatsCounts } from './dtos/responses/novel-list-item.response';
 import { UpdatePlaybackRequest } from './dtos/requests/update-playback.request';
+import { SyncNovelChaptersResponse } from './dtos/responses/sync-chapters.response';
+import { fetchFreeChapterList } from './novel-chapters-sync';
 import { JobStatus } from '../common/enums/job-status.enum';
 
 @Injectable()
@@ -75,6 +77,38 @@ export class NovelsService {
         const novel = await this.findOne(id);
         const statsByNovelId = await this.getStatsByNovelIds([id]);
         return toNovelStatsResponse(novel.id, novel.title, statsByNovelId.get(id) ?? toStatsCounts());
+    }
+
+    async syncChapters(id: number): Promise<SyncNovelChaptersResponse> {
+        const novel = await this.findOne(id);
+        const { chapters, vipCount } = await fetchFreeChapterList(novel.url);
+
+        const existing = await this.chaptersRepository.find({
+            where: { novelId: id },
+            select: { chapterSiteId: true },
+        });
+        const existingSiteIds = new Set(existing.map((chapter) => chapter.chapterSiteId));
+
+        const missing = chapters.map((chapter, index) => ({ ...chapter, number: index + 1 })).filter((chapter) => !existingSiteIds.has(chapter.siteId));
+
+        if (missing.length > 0) {
+            await this.chaptersRepository
+                .createQueryBuilder()
+                .insert()
+                .into(Chapter)
+                .values(
+                    missing.map((chapter) => ({
+                        novelId: id,
+                        chapterSiteId: chapter.siteId,
+                        chapterNumber: chapter.number,
+                        title: chapter.title.slice(0, 500),
+                    })),
+                )
+                .orIgnore()
+                .execute();
+        }
+
+        return { synced: missing.length, total: chapters.length, vipCount };
     }
 
     private async getStatsByNovelIds(ids: number[]): Promise<Map<number, NovelStatsCounts>> {

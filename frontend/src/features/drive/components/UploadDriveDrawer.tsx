@@ -146,7 +146,7 @@ export function UploadDriveDrawer({ open, novelId, request, onClose }: UploadDri
             open={open}
             title="Upload MP3 lên Google Drive"
             placement="right"
-            width={480}
+            size={480}
             destroyOnHidden
             onClose={onClose}
             footer={

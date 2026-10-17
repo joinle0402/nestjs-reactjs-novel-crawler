@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
 import { NovelsService } from './novels.service';
 import { Novel } from './entities/novel.entity';
 import { CreateNovelRequest } from './dtos/requests/create-novel.request';
@@ -6,6 +6,7 @@ import { UpdateNovelRequest } from './dtos/requests/update-novel.request';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { NovelStatsResponse } from './dtos/responses/novel-stats.response';
 import { NovelListItemResponse } from './dtos/responses/novel-list-item.response';
+import { SyncNovelChaptersResponse } from './dtos/responses/sync-chapters.response';
 import { UpdatePlaybackRequest } from './dtos/requests/update-playback.request';
 import { PlaybackState } from './entities/playback-state.entity';
 
@@ -28,6 +29,14 @@ export class NovelsController {
         return this.novelsService.getStats(id);
     }
 
+    @Post(':id/sync-chapters')
+    @HttpCode(200)
+    @ApiOperation({ summary: 'Đồng bộ danh sách chương từ API trang nguồn, thêm chương còn thiếu' })
+    @ApiResponse({ status: 200, type: SyncNovelChaptersResponse })
+    async syncChapters(@Param('id', ParseIntPipe) id: number): Promise<SyncNovelChaptersResponse> {
+        return this.novelsService.syncChapters(id);
+    }
+
     @Get(':id/playback')
     @ApiOperation({ summary: 'Lấy vị trí nghe gần nhất' })
     async getPlayback(@Param('id', ParseIntPipe) id: number): Promise<PlaybackState | null> {
@@ -36,10 +45,7 @@ export class NovelsController {
 
     @Put(':id/playback')
     @ApiOperation({ summary: 'Cập nhật vị trí nghe' })
-    async upsertPlayback(
-        @Param('id', ParseIntPipe) id: number,
-        @Body() request: UpdatePlaybackRequest,
-    ): Promise<PlaybackState> {
+    async upsertPlayback(@Param('id', ParseIntPipe) id: number, @Body() request: UpdatePlaybackRequest): Promise<PlaybackState> {
         return this.novelsService.upsertPlayback(id, request);
     }
 

@@ -25,7 +25,7 @@ Use this map, then `search_graph` / `get_code_snippet` for the one symbol you wi
 
 ## Contract
 
-- Scopes: `missing`, `failed`, `chapters`, `refresh` (`CRAWL_SCOPES`). `refresh` re-fetches the site chapter list (forces `_needs_chapter_list_api`), creates records for new chapters, then crawls chapters without content.
+- Scopes: `missing`, `failed`, `chapters`, `refresh` (`CRAWL_SCOPES`). `refresh` syncs the site chapter list over plain HTTP inside `CrawlService.resolveTarget` (`NovelsService.syncChapters`), records the new chapters, stores their numbers on the job, then the worker crawls those chapters using the DB list. Legacy refresh jobs with no `chapter_numbers` still set `refresh_chapter_list` and fetch the list in the browser.
 - Job statuses: `pending`, `running`, `paused`, `waiting_for_manual_action`, `completed`, `completed_with_errors`, `failed`, `cancelled`.
 - Active jobs: `pending`, `running`, `paused`, `waiting_for_manual_action` (`CRAWL_ACTIVE_STATUSES`).
 - One active crawl at a time. Respect `crawl_worker.lock` and `crawl_runner.pid`.
@@ -47,6 +47,8 @@ API surface on `CrawlController`: `lookup`, `preview`, `logs`, `current`, `list`
 | Chapter list or body selectors | `_get_chapter_list`, `_extract_chapter_content` |
 | URL normalization | `backend/src/crawl/novel-url.ts` and `_normalize_novel_url` |
 | Novel page preview (title, author, summary, chapter count) | `preview_novel` in `worker/crawler.py`, `GET /crawl/preview` |
+| Sync chapter list without the worker (plain HTTP) | `fetchFreeChapterList` in `backend/src/novels/novel-chapters-sync.ts`, `POST /novels/:id/sync-chapters` |
+| Refresh scope planning (HTTP sync + crawl missing) | `resolveTarget` scope `refresh` in `backend/src/crawl/crawl.service.ts` |
 
 Tests matching `*.spec.ts` are excluded from the graph. Read those files directly when the change needs a test.
 
@@ -71,3 +73,5 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-09-30 — Add scope `refresh` (update new chapter list). `crawl_jobs.rest_until`/`rest_kind` expose per-chapter and batch pause state to the API/UI; `CrawlControl.on_rest` reports it.
 - 2026-10-11 — Add `preview`: headless Playwright reads title, author, summary, and free-chapter count. The add-novel form can open the crawl drawer with that URL and chapter range.
 - 2026-10-11 — `preview` now upserts the novel and inserts missing chapter rows. Adding a novel with an existing URL updates that novel.
+- 2026-10-17 — Add `POST /novels/:id/sync-chapters`: plain HTTP `chapterlist` fetch (home page for cookie, then API) inserts missing free chapters and returns the added count. No Playwright/worker.
+- 2026-10-17 — Crawl scope `refresh` now syncs the list over HTTP in `resolveTarget` and stores the missing chapter numbers; the worker only forces the in-browser list API for legacy jobs without `chapter_numbers`.

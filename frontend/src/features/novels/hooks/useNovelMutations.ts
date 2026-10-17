@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     createNovel,
     deleteNovel,
+    syncNovelChapters,
     updateNovel,
     type CreateNovelBody,
     type UpdateNovelBody,
@@ -26,6 +27,18 @@ export function useUpdateNovelMutation() {
         onSuccess: (novel) => {
             void queryClient.invalidateQueries({ queryKey: novelKeys.lists() });
             void queryClient.invalidateQueries({ queryKey: novelKeys.detail(novel.id) });
+        },
+    });
+}
+
+export function useSyncNovelChaptersMutation() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (id: number) => syncNovelChapters(id),
+        onSuccess: (_result, id) => {
+            void queryClient.invalidateQueries({ queryKey: novelKeys.lists() });
+            void queryClient.invalidateQueries({ queryKey: novelKeys.stats(id) });
+            void queryClient.invalidateQueries({ queryKey: chapterKeys.lists() });
         },
     });
 }

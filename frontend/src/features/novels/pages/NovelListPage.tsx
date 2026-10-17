@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, Empty, Input, Modal, Space, Spin, Table, Tooltip, Typography, message, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useNovelsQuery } from '@/features/novels/hooks/useNovelsQuery.ts';
 import {
     useCreateNovelMutation,
     useDeleteNovelMutation,
+    useSyncNovelChaptersMutation,
     useUpdateNovelMutation,
 } from '@/features/novels/hooks/useNovelMutations.ts';
 import { NovelFormModal, type NovelFormValues } from '@/features/novels/components/NovelFormModal.tsx';
@@ -42,6 +43,8 @@ export function NovelListPage() {
     const createMutation = useCreateNovelMutation();
     const updateMutation = useUpdateNovelMutation();
     const deleteMutation = useDeleteNovelMutation();
+    const syncMutation = useSyncNovelChaptersMutation();
+    const [syncingId, setSyncingId] = useState<number | null>(null);
     const [search, setSearch] = useState('');
     const [formOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<NovelListItem | null>(null);
@@ -152,6 +155,23 @@ export function NovelListPage() {
         });
     };
 
+    const handleSync = (novel: NovelListItem) => {
+        setSyncingId(novel.id);
+        syncMutation.mutate(novel.id, {
+            onSuccess: (result) => {
+                if (result.synced > 0) {
+                    message.success(
+                        `Đã đồng bộ ${result.synced} chương mới (tổng ${result.total} chương miễn phí)`,
+                    );
+                } else {
+                    message.info(`Không có chương mới. Tổng ${result.total} chương miễn phí`);
+                }
+            },
+            onError: (err) => message.error(getErrorMessage(err, 'Đồng bộ chương thất bại')),
+            onSettled: () => setSyncingId(null),
+        });
+    };
+
     const columns: ColumnsType<NovelListItem> = [
         {
             title: '#',
@@ -222,10 +242,21 @@ export function NovelListPage() {
         {
             title: '',
             key: 'actions',
-            width: 96,
+            width: 132,
             fixed: 'right',
             render: (_, novel) => (
                 <Space size={0} onClick={(event) => event.stopPropagation()}>
+                    <Tooltip title="Đồng bộ danh sách chương">
+                        <Button
+                            type="text"
+                            size="small"
+                            icon={<SyncOutlined />}
+                            loading={syncingId === novel.id}
+                            disabled={syncingId !== null && syncingId !== novel.id}
+                            aria-label="Đồng bộ chương"
+                            onClick={() => handleSync(novel)}
+                        />
+                    </Tooltip>
                     <Tooltip title="Sửa">
                         <Button
                             type="text"

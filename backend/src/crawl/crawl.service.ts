@@ -331,7 +331,11 @@ export class CrawlService {
 
         if (request.scope === 'refresh') {
             throwUnless(novelId, 'Cần truyện đã có trong thư viện để cập nhật danh sách chương mới');
-            return { novelId, url, scope: 'refresh', chapterRange: null, chapterNumbers: null, totalChapters: null };
+            await this.novelsService.syncChapters(novelId);
+            const refreshedFacts = await this.loadFacts(novelId);
+            const numbers = refreshedFacts.filter((fact) => !fact.hasContent).map((fact) => fact.chapterNumber);
+            throwUnless(numbers.length > 0, 'Danh sách chương đã cập nhật, không có chương nào cần cào');
+            return { novelId, url, scope: 'refresh', chapterRange: null, chapterNumbers: numbers, totalChapters: numbers.length };
         }
 
         const text = request.chapterRange?.trim() ?? '';

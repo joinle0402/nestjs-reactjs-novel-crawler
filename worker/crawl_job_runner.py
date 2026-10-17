@@ -132,7 +132,7 @@ def run_job(job_id: int) -> None:
             run_tts=False,
             novel_id=novel_id,
             control=JobCrawlControl(job_id),
-            refresh_chapter_list=job["scope"] == "refresh",
+            refresh_chapter_list=job["scope"] == "refresh" and not numbers,
         )
         current = fetch_job(job_id)
         if not current or current["status"] != "running":

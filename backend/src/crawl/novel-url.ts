@@ -6,6 +6,22 @@ export class NovelUrlError extends Error {
 }
 
 const NOVEL_URL = /^https?:\/\/[^/]+\/truyen\/[^/]+\/[^/]+\/\d+\/$/;
+const NOVEL_SOURCE = /^https?:\/\/[^/]+\/truyen\/([^/]+)\/[^/]+\/(\d+)\/?/;
+
+export type NovelSource = {
+    /** Nguồn truyện (h) trên sangtacviet, ví dụ `qimao`. */
+    source: string;
+    /** ID truyện trên trang nguồn (bookid). */
+    bookId: string;
+};
+
+export function parseNovelSource(url: string): NovelSource {
+    const match = NOVEL_SOURCE.exec(url.trim());
+    if (!match) {
+        throw new NovelUrlError('URL truyện không hợp lệ để đồng bộ chương');
+    }
+    return { source: match[1], bookId: match[2] };
+}
 
 export function normalizeNovelUrl(url: string): string {
     const trimmed = url.trim();
