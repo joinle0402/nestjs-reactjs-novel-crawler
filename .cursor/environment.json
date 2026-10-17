@@ -1,0 +1,15 @@
+{
+    "name": "nestjs-reactjs-novel-crawler",
+    "user": "ubuntu",
+    "install": "cd backend && pnpm install --frozen-lockfile && cd ../frontend && pnpm install --frozen-lockfile",
+    "terminals": [
+        {
+            "name": "backend",
+            "command": "cd backend && pnpm run start:dev"
+        },
+        {
+            "name": "frontend",
+            "command": "cd frontend && pnpm run dev --host"
+        }
+    ]
+}
