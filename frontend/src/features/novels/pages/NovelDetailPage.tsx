@@ -106,7 +106,7 @@ export function NovelDetailPage() {
     const { playChapter, track, status } = useAudioPlayer();
     const [formOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<ChapterListItem | null>(null);
-    const [selectedChapters, setSelectedChapters] = useState<Map<number, number>>(new Map());
+    const [selectedChapters, setSelectedChapters] = useState<Map<number, ChapterListItem>>(new Map());
     const [runRequest, setRunRequest] = useState<TtsRunRequest | null>(null);
     const [driveRequest, setDriveRequest] = useState<DriveRunRequest | null>(null);
     const { areaRef, bodyHeight } = useTableScrollFit();
@@ -437,23 +437,34 @@ export function NovelDetailPage() {
     const stats = statsQuery.data;
     const missing = previewQuery.data?.missing ?? 0;
     const failed = previewQuery.data?.failed ?? 0;
-    const selectedNumbers = [...selectedChapters.values()].sort((a, b) => a - b);
+    const selectedList = [...selectedChapters.values()];
+    const numbersOf = (list: ChapterListItem[]) =>
+        list.map((chapter) => chapter.chapterNumber).sort((a, b) => a - b);
+    const crawlNumbers = numbersOf(selectedList.filter((chapter) => chapter.crawlStatus !== JobStatus.COMPLETED));
+    const ttsNumbers = numbersOf(
+        selectedList.filter((chapter) => chapter.crawlStatus === JobStatus.COMPLETED && !chapter.hasMp3),
+    );
+    const driveNumbers = numbersOf(selectedList.filter((chapter) => chapter.hasMp3 && !isOnDrive(chapter)));
 
     const ttsAction = (() => {
-        if (selectedNumbers.length > 0) {
+        if (selectedChapters.size > 0) {
             return {
-                label: `Tạo audio (${selectedNumbers.length})`,
-                request: { scope: 'chapters' as const, chapterRange: formatChapterRangeInput(selectedNumbers) },
+                label: `Tạo audio (${ttsNumbers.length})`,
+                disabled: ttsNumbers.length === 0,
+                request:
+                    ttsNumbers.length > 0
+                        ? { scope: 'chapters' as const, chapterRange: formatChapterRangeInput(ttsNumbers) }
+                        : null,
             };
         }
         if (!previewQuery.data) {
             return null;
         }
         if (missing > 0 && failed !== missing) {
-            return { label: `Tạo audio (${missing})`, request: { scope: 'missing' as const, chapterRange: '' } };
+            return { label: `Tạo audio (${missing})`, disabled: false, request: { scope: 'missing' as const, chapterRange: '' } };
         }
         if (failed > 0) {
-            return { label: `Chạy lại lỗi (${failed})`, request: { scope: 'failed' as const, chapterRange: '' } };
+            return { label: `Chạy lại lỗi (${failed})`, disabled: false, request: { scope: 'failed' as const, chapterRange: '' } };
         }
         return null;
     })();
@@ -499,25 +510,31 @@ export function NovelDetailPage() {
                         {ttsAction ? (
                             <Button
                                 icon={<SoundOutlined />}
-                                disabled={jobActive}
-                                onClick={() => setRunRequest(ttsAction.request)}
+                                disabled={jobActive || ttsAction.disabled}
+                                onClick={() => {
+                                    if (ttsAction.request) {
+                                        setRunRequest(ttsAction.request);
+                                    }
+                                }}
                             >
                                 {ttsAction.label}
                             </Button>
                         ) : null}
                         <Button
                             icon={<CloudUploadOutlined />}
-                            disabled={driveActive}
+                            disabled={driveActive || (selectedChapters.size > 0 && driveNumbers.length === 0)}
                             title={driveActive ? 'Đang có job upload Drive' : 'Upload MP3 lên Google Drive'}
-                            onClick={() =>
-                                setDriveRequest(
-                                    selectedNumbers.length > 0
-                                        ? { scope: 'chapters', chapterRange: formatChapterRangeInput(selectedNumbers) }
-                                        : { scope: 'missing', chapterRange: '' },
-                                )
-                            }
+                            onClick={() => {
+                                if (driveNumbers.length > 0) {
+                                    setDriveRequest({ scope: 'chapters', chapterRange: formatChapterRangeInput(driveNumbers) });
+                                    return;
+                                }
+                                if (selectedChapters.size === 0) {
+                                    setDriveRequest({ scope: 'missing', chapterRange: '' });
+                                }
+                            }}
                         >
-                            {selectedNumbers.length > 0 ? `Upload Drive (${selectedNumbers.length})` : 'Upload Drive'}
+                            {selectedChapters.size > 0 ? `Upload Drive (${driveNumbers.length})` : 'Upload Drive'}
                         </Button>
                         <Button
                             icon={<CloudSyncOutlined />}
@@ -545,14 +562,17 @@ export function NovelDetailPage() {
                         <Button
                             icon={<CloudDownloadOutlined />}
                             loading={crawlMutation.isPending}
-                            disabled={crawlActive}
+                            disabled={crawlActive || (selectedChapters.size > 0 && crawlNumbers.length === 0)}
                             title={crawlActive ? 'Đang có tác vụ cào khác' : undefined}
                             onClick={() => {
-                                if (selectedNumbers.length === 0) {
+                                if (selectedChapters.size === 0) {
                                     navigate(`/crawl?novelId=${novel.id}`);
                                     return;
                                 }
-                                const chapterRange = formatChapterRangeInput(selectedNumbers);
+                                if (crawlNumbers.length === 0) {
+                                    return;
+                                }
+                                const chapterRange = formatChapterRangeInput(crawlNumbers);
                                 crawlMutation.mutate(
                                     {
                                         novelId: novel.id,
@@ -570,7 +590,7 @@ export function NovelDetailPage() {
                                 );
                             }}
                         >
-                            {selectedNumbers.length > 0 ? `Cào ${selectedNumbers.length} chương` : 'Cào chương'}
+                            {selectedChapters.size > 0 ? `Cào ${crawlNumbers.length} chương` : 'Cào chương'}
                         </Button>
                         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
                             Thêm chương
@@ -655,13 +675,13 @@ export function NovelDetailPage() {
                                 preserveSelectedRowKeys: true,
                                 onChange: (keys, rows) => {
                                     setSelectedChapters((current) => {
-                                        const next = new Map<number, number>();
-                                        const fromPage = new Map(rows.map((row) => [row.id, row.chapterNumber]));
+                                        const next = new Map<number, ChapterListItem>();
+                                        const fromPage = new Map(rows.map((row) => [row.id, row]));
                                         for (const key of keys) {
                                             const id = Number(key);
-                                            const chapterNumber = fromPage.get(id) ?? current.get(id);
-                                            if (chapterNumber != null) {
-                                                next.set(id, chapterNumber);
+                                            const chapter = fromPage.get(id) ?? current.get(id);
+                                            if (chapter != null) {
+                                                next.set(id, chapter);
                                             }
                                         }
                                         return next;
@@ -680,7 +700,7 @@ export function NovelDetailPage() {
                                         if (next.has(chapter.id)) {
                                             next.delete(chapter.id);
                                         } else {
-                                            next.set(chapter.id, chapter.chapterNumber);
+                                            next.set(chapter.id, chapter);
                                         }
                                         return next;
                                     });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Layout, Menu, Switch, Typography, theme } from 'antd';
+import { Button, Layout, Menu, Popover, Select, Switch, Typography, theme } from 'antd';
 import {
     BookOutlined,
     CheckOutlined,
@@ -14,6 +14,7 @@ import {
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BottomPlayer } from '@/features/audio/BottomPlayer.tsx';
 import { useAudioPlayer } from '@/features/audio/AudioPlayerContext.tsx';
+import { useBgmTracksQuery } from '@/features/bgm/hooks/useBgmQueries.ts';
 import { isActiveTtsJob } from '@/features/tts/api/ttsApi.ts';
 import { useTtsJobWatch } from '@/features/tts/hooks/useTtsQueries.ts';
 import { isActiveCrawlJob } from '@/features/crawl/api/crawlApi.ts';
@@ -26,13 +27,17 @@ import { useThemeMode } from '@/shared/theme/useThemeMode.ts';
 
 const { Sider, Content } = Layout;
 
+const BGM_OFF_VALUE = '__bgm_off__';
+
 export function MainLayout() {
     const [collapsed, setCollapsed] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
     const { mode, toggle, accent, setAccent } = useThemeMode();
     const { token } = theme.useToken();
-    const { track } = useAudioPlayer();
+    const { track, bgmId, setBgmAlwaysOn } = useAudioPlayer();
+    const bgmQuery = useBgmTracksQuery();
+    const bgmTracks = bgmQuery.data ?? [];
     const jobQuery = useTtsJobWatch();
     const jobActive = isActiveTtsJob(jobQuery.data);
     const crawlQuery = useCrawlJobWatch();
@@ -51,6 +56,28 @@ export function MainLayout() {
               : location.pathname.startsWith('/novels')
                 ? ['novels']
                 : [];
+
+    const bgmOptions = [
+        { value: BGM_OFF_VALUE, label: 'Không nhạc nền' },
+        ...bgmTracks.map((item) => ({ value: item.id, label: item.name })),
+    ];
+
+    const handleBgmChange = (value: unknown) => {
+        setBgmAlwaysOn(typeof value === 'string' && value !== BGM_OFF_VALUE ? value : null);
+    };
+
+    const bgmSelect = (
+        <Select
+            size="small"
+            aria-label="Nhạc nền"
+            style={{ width: '100%' }}
+            value={bgmId ?? BGM_OFF_VALUE}
+            loading={bgmQuery.isLoading}
+            disabled={!bgmTracks.length}
+            options={bgmOptions}
+            onChange={handleBgmChange}
+        />
+    );
 
     return (
         <Layout style={{ minHeight: '100vh' }}>
@@ -153,6 +180,35 @@ export function MainLayout() {
                             },
                         ]}
                     />
+
+                    <div
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 6,
+                            padding: collapsed ? '12px 0' : '12px 20px',
+                            borderTop: `1px solid ${token.colorBorderSecondary}`,
+                            alignItems: collapsed ? 'center' : 'stretch',
+                        }}
+                    >
+                        {!collapsed ? (
+                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                Nhạc nền
+                            </Typography.Text>
+                        ) : null}
+                        {collapsed ? (
+                            <Popover trigger="click" placement="right" title="Nhạc nền" content={<div style={{ width: 220 }}>{bgmSelect}</div>}>
+                                <Button
+                                    type="text"
+                                    className={`sider-bgm-trigger${bgmId ? ' sider-bgm-trigger--active' : ''}`}
+                                    icon={<CustomerServiceOutlined />}
+                                    aria-label="Nhạc nền"
+                                />
+                            </Popover>
+                        ) : (
+                            bgmSelect
+                        )}
+                    </div>
 
                     <div
                         style={{

@@ -23,6 +23,7 @@ type AudioPlayerContextValue = {
     duration: number;
     rate: number;
     bgmId: string | null;
+    bgmAlways: boolean;
     effectiveBgmId: string | null;
     errorMessage: string | null;
     playChapter: (input: {
@@ -37,6 +38,7 @@ type AudioPlayerContextValue = {
     seek: (seconds: number) => void;
     setRate: (rate: number) => void;
     setBgmId: (id: string | null) => void;
+    setBgmAlwaysOn: (id: string | null) => void;
     selectDefaultBgm: (ids: string[], chapterHasBgm?: boolean) => void;
     playPrev: () => Promise<void>;
     playNext: () => Promise<void>;
@@ -48,6 +50,7 @@ const AudioPlayerContext = createContext<AudioPlayerContextValue | null>(null);
 const PLAYBACK_SAVE_INTERVAL_MS = 8_000;
 const RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 const BGM_STORAGE_KEY = 'nc-bgm-id';
+const BGM_ALWAYS_STORAGE_KEY = 'nc-bgm-always';
 const BGM_OFF = 'off';
 const BGM_VOLUME = 0.13;
 
@@ -64,6 +67,14 @@ function readStoredBgm(): { id: string | null; explicitOff: boolean } {
         return { id: trimmed, explicitOff: false };
     } catch {
         return { id: null, explicitOff: false };
+    }
+}
+
+function readStoredBgmAlways(id: string | null): boolean {
+    try {
+        return id != null && localStorage.getItem(BGM_ALWAYS_STORAGE_KEY) === '1';
+    } catch {
+        return false;
     }
 }
 
@@ -102,7 +113,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const trackRef = useRef<PlayableTrack | null>(null);
     const rateRef = useRef(1.5);
     const storedBgm = readStoredBgm();
+    const storedBgmAlways = readStoredBgmAlways(storedBgm.id);
     const bgmIdRef = useRef<string | null>(storedBgm.id);
+    const bgmAlwaysRef = useRef(storedBgmAlways);
     const explicitOffRef = useRef(storedBgm.explicitOff);
     const bgmOverrideRef = useRef<string | null | undefined>(undefined);
     const lastSavedAtRef = useRef(0);
@@ -115,6 +128,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const [duration, setDuration] = useState(0);
     const [rate, setRateState] = useState(1.5);
     const [bgmId, setBgmIdState] = useState<string | null>(bgmIdRef.current);
+    const [bgmAlways, setBgmAlwaysState] = useState(storedBgmAlways);
     const [bgmOverride, setBgmOverrideState] = useState<string | null | undefined>(undefined);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -201,12 +215,31 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
-    const syncBgm = (playing: boolean) => {
+    // Nhạc nền luôn bật: trình duyệt chặn autoplay sau khi tải lại trang → thử phát lại ở tương tác đầu tiên.
+    useEffect(() => {
+        if (!bgmAlways) {
+            return;
+        }
+        const resume = () => syncBgmRef.current(true);
+        window.addEventListener('pointerdown', resume);
+        window.addEventListener('keydown', resume);
+        return () => {
+            window.removeEventListener('pointerdown', resume);
+            window.removeEventListener('keydown', resume);
+        };
+    }, [bgmAlways]);
+
+    const syncBgm = (voicePlaying: boolean) => {
         const bgm = bgmRef.current;
         if (!bgm) {
             return;
         }
-        const id = bgmOverrideRef.current !== undefined ? bgmOverrideRef.current : bgmIdRef.current;
+        const alwaysOn = bgmAlwaysRef.current;
+        const id = alwaysOn
+            ? bgmIdRef.current
+            : bgmOverrideRef.current !== undefined
+              ? bgmOverrideRef.current
+              : bgmIdRef.current;
         if (!id) {
             bgm.pause();
             if (bgm.dataset.track) {
@@ -223,7 +256,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
             bgm.volume = BGM_VOLUME;
             bgm.load();
         }
-        if (playing) {
+        if (voicePlaying || alwaysOn) {
             if (bgm.paused) {
                 void bgm.play().catch(() => undefined);
             }
@@ -416,6 +449,16 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    const persistBgmAlways = (enabled: boolean) => {
+        bgmAlwaysRef.current = enabled;
+        setBgmAlwaysState(enabled);
+        try {
+            localStorage.setItem(BGM_ALWAYS_STORAGE_KEY, enabled ? '1' : '0');
+        } catch {
+            // ignore storage failures
+        }
+    };
+
     const setBgmId = (id: string | null) => {
         const next = id && id.trim() ? id : null;
         bgmOverrideRef.current = undefined;
@@ -423,6 +466,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         explicitOffRef.current = !next;
         bgmIdRef.current = next;
         setBgmIdState(next);
+        if (!next) {
+            // Tắt nhạc nền cũng tắt chế độ nghe nền liên tục.
+            persistBgmAlways(false);
+        }
         try {
             localStorage.setItem(BGM_STORAGE_KEY, next ?? BGM_OFF);
         } catch {
@@ -435,6 +482,12 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         const voice = audioRef.current;
         const playing = Boolean(voice && trackRef.current && !voice.paused && !voice.ended);
         syncBgm(playing);
+    };
+
+    const setBgmAlwaysOn = (id: string | null) => {
+        const next = id && id.trim() ? id : null;
+        persistBgmAlways(next != null);
+        setBgmId(next);
     };
 
     const selectDefaultBgm = (ids: string[], chapterHasBgm = false) => {
@@ -451,6 +504,12 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
             syncBgm(playing);
         };
 
+        if (bgmAlwaysRef.current) {
+            // Người dùng đã bật nhạc nền liên tục: bỏ qua nhạc nền theo chương.
+            applyOverride(undefined);
+            resync();
+            return;
+        }
         if (chapterHasBgm) {
             // MP3 đã trộn nhạc nền: mặc định tắt nhạc nền cho chương này (không ghi đè lựa chọn của người dùng).
             applyOverride(null);
@@ -527,6 +586,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         duration,
         rate,
         bgmId,
+        bgmAlways,
         effectiveBgmId: bgmOverride !== undefined ? bgmOverride : bgmId,
         errorMessage,
         playChapter,
@@ -536,6 +596,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         seek,
         setRate,
         setBgmId,
+        setBgmAlwaysOn,
         selectDefaultBgm,
         playPrev,
         playNext,

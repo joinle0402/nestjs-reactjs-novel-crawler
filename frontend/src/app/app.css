@@ -546,6 +546,15 @@ a {
     max-width: calc(100vw - 48px);
 }
 
+.sider-bgm-trigger {
+    color: var(--text-secondary);
+}
+
+.sider-bgm-trigger--active,
+.sider-bgm-trigger--active:hover {
+    color: var(--link-hover) !important;
+}
+
 @media (max-width: 768px) {
     .bottom-player {
         left: 0 !important;
