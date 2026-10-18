@@ -1,9 +1,12 @@
-import { Alert, Button, Form, Input, Modal, Space, message } from 'antd';
+import { Alert, Button, Drawer, Form, Image, Input, Space, Upload, message } from 'antd';
+import { DeleteOutlined, UploadOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { previewCrawlUrl, type CrawlPreview } from '@/features/crawl/api/crawlApi.ts';
 import type { Novel, NovelListItem } from '@/features/novels/api/novelsApi.ts';
 import { novelKeys } from '@/features/novels/hooks/useNovelsQuery.ts';
+import { useRemoveNovelCoverMutation, useUploadNovelCoverMutation } from '@/features/novels/hooks/useNovelMutations.ts';
+import { DEFAULT_NOVEL_COVER, getNovelCoverUrl } from '@/features/novels/lib/novelCover.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 
 export type NovelFormValues = {
@@ -14,7 +17,7 @@ export type NovelFormValues = {
     chapterRange?: string;
 };
 
-type NovelFormModalProps = {
+type NovelFormDrawerProps = {
     open: boolean;
     novel?: Novel | NovelListItem | null;
     confirmLoading?: boolean;
@@ -81,21 +84,31 @@ function chapterRangeIssue(value: string, maxAvailable?: number): string | null 
     return null;
 }
 
-export function NovelFormModal({ open, novel, confirmLoading, onCancel, onSubmit }: NovelFormModalProps) {
+export function NovelFormDrawer({ open, novel, confirmLoading, onCancel, onSubmit }: NovelFormDrawerProps) {
     const queryClient = useQueryClient();
     const [form] = Form.useForm<NovelFormValues>();
+    const uploadCoverMutation = useUploadNovelCoverMutation();
+    const removeCoverMutation = useRemoveNovelCoverMutation();
     const [reading, setReading] = useState(false);
     const [preview, setPreview] = useState<CrawlPreview | null>(null);
+    const [coverImage, setCoverImage] = useState<string | null>(null);
+    const coverOwnerRef = useRef<number | null>(null);
     const isEdit = Boolean(novel);
     const urlValue = Form.useWatch('url', form) ?? '';
     const chapterRange = Form.useWatch('chapterRange', form) ?? '';
     const matchedPreview = preview && sameNovelUrl(urlValue, preview.url) ? preview : null;
+    const uploadingCover = uploadCoverMutation.isPending || removeCoverMutation.isPending;
 
     useEffect(() => {
         if (!open) {
             setPreview(null);
             setReading(false);
             return;
+        }
+        const novelId = novel?.id ?? null;
+        if (coverOwnerRef.current !== novelId) {
+            coverOwnerRef.current = novelId;
+            setCoverImage(novel?.coverImage ?? null);
         }
         if (novel) {
             form.setFieldsValue({
@@ -123,6 +136,7 @@ export function NovelFormModal({ open, novel, confirmLoading, onCancel, onSubmit
                 summary: data.summary || current.summary,
             });
             setPreview(data);
+            setCoverImage((currentCover) => currentCover || data.coverUrl || null);
             void queryClient.invalidateQueries({ queryKey: novelKeys.lists() });
         } catch (error) {
             if (error && typeof error === 'object' && 'errorFields' in error) {
@@ -134,20 +148,101 @@ export function NovelFormModal({ open, novel, confirmLoading, onCancel, onSubmit
         }
     };
 
+    const uploadCover = (file: File) => {
+        if (!novel) {
+            return;
+        }
+        const body = new FormData();
+        body.append('file', file);
+        uploadCoverMutation.mutate(
+            { id: novel.id, body },
+            {
+                onSuccess: (updated) => {
+                    setCoverImage(updated.coverImage);
+                    message.success('Đã cập nhật ảnh bìa');
+                },
+                onError: (error) => message.error(getErrorMessage(error, 'Upload ảnh bìa thất bại')),
+            },
+        );
+    };
+
+    const removeCover = () => {
+        if (!novel) {
+            return;
+        }
+        removeCoverMutation.mutate(novel.id, {
+            onSuccess: () => {
+                setCoverImage(null);
+                message.success('Đã xóa ảnh bìa');
+            },
+            onError: (error) => message.error(getErrorMessage(error, 'Xóa ảnh bìa thất bại')),
+        });
+    };
+
+    const coverSrc = getNovelCoverUrl({ id: novel?.id ?? 0, coverImage });
+
     return (
-        <Modal
+        <Drawer
             title={isEdit ? 'Sửa truyện' : 'Thêm truyện'}
+            placement="right"
+            size={560}
             open={open}
-            width={560}
-            okText={isEdit ? 'Lưu' : chapterRange.trim() ? 'Thêm và mở cào' : 'Thêm'}
-            cancelText="Hủy"
-            confirmLoading={confirmLoading}
-            okButtonProps={{ disabled: reading }}
             destroyOnHidden
-            onCancel={onCancel}
-            onOk={() => form.submit()}
+            onClose={onCancel}
+            footer={
+                <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+                    <Button onClick={onCancel}>Hủy</Button>
+                    <Button
+                        type="primary"
+                        loading={confirmLoading}
+                        disabled={reading || uploadingCover}
+                        onClick={() => form.submit()}
+                    >
+                        {isEdit ? 'Lưu' : chapterRange.trim() ? 'Thêm và mở cào' : 'Thêm'}
+                    </Button>
+                </Space>
+            }
         >
             <Form form={form} layout="vertical" onFinish={onSubmit} requiredMark="optional">
+                {isEdit ? (
+                    <Form.Item label="Ảnh bìa" extra="JPG, PNG, WebP, GIF hoặc AVIF. Tối đa 8 MB.">
+                        <div className="novel-cover-editor">
+                            <Image
+                                src={coverSrc}
+                                alt={novel?.title ?? 'Ảnh bìa'}
+                                className="novel-cover-editor__preview"
+                                width={120}
+                                height={168}
+                                fallback={DEFAULT_NOVEL_COVER}
+                                preview={{ mask: 'Xem ảnh' }}
+                            />
+                            <Space orientation="vertical" size={8}>
+                                <Upload
+                                    accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                                    maxCount={1}
+                                    showUploadList={false}
+                                    beforeUpload={(file) => {
+                                        uploadCover(file);
+                                        return false;
+                                    }}
+                                >
+                                    <Button icon={<UploadOutlined />} loading={uploadCoverMutation.isPending}>
+                                        Tải ảnh lên
+                                    </Button>
+                                </Upload>
+                                <Button
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    disabled={!coverImage || removeCoverMutation.isPending}
+                                    loading={removeCoverMutation.isPending}
+                                    onClick={removeCover}
+                                >
+                                    Xóa ảnh
+                                </Button>
+                            </Space>
+                        </div>
+                    </Form.Item>
+                ) : null}
                 <Form.Item label="URL nguồn" required>
                     <Space.Compact style={{ width: '100%' }}>
                         <Form.Item
@@ -211,6 +306,6 @@ export function NovelFormModal({ open, novel, confirmLoading, onCancel, onSubmit
                     </Form.Item>
                 )}
             </Form>
-        </Modal>
+        </Drawer>
     );
 }

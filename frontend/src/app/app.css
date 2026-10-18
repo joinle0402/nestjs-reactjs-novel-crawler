@@ -171,6 +171,31 @@ a {
     white-space: nowrap;
 }
 
+.novel-cover-cell {
+    display: inline-flex;
+    cursor: zoom-in;
+}
+
+.novel-cover-cell .ant-image-img {
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--sub-bg);
+}
+
+.novel-cover-editor {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.novel-cover-editor .ant-image-img {
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--sub-border);
+    background: var(--sub-bg);
+}
+
 .novel-progress {
     display: flex;
     flex-direction: column;

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280" role="img" aria-label="Chưa có ảnh bìa">
+    <defs>
+        <linearGradient id="coverBg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#f4f1ea"/>
+            <stop offset="100%" stop-color="#e4ded2"/>
+        </linearGradient>
+    </defs>
+    <rect width="200" height="280" fill="url(#coverBg)"/>
+    <rect x="14" y="14" width="172" height="252" rx="8" fill="none" stroke="#c9c1b2" stroke-width="2"/>
+    <g fill="none" stroke="#b6ac9b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M58 108h84v70a8 8 0 0 1-8 8H66a8 8 0 0 1-8-8z"/>
+        <path d="M58 108c0-12 8-20 20-20h28c12 0 20 8 20 20"/>
+        <path d="M100 88v90"/>
+    </g>
+    <text x="100" y="222" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="15" fill="#9c937f">Chưa có ảnh</text>
+</svg>

@@ -247,6 +247,46 @@ def _text_or_empty(page: Page, selector: str) -> str:
     return _with_navigation_retry(page, _read)
 
 
+def _book_cover_url(page: Page) -> str:
+    """URL ảnh bìa thật từ #thumb-prop, hoặc "" nếu truyện không có bìa.
+
+    Trang tự gán src sang ảnh placeholder (bookcover256.jpg) khi truyện thiếu bìa
+    hoặc ảnh nguồn không tải được. Vì vậy chỉ nhận ảnh khi nó đã load thật
+    (naturalWidth > 0) và không phải placeholder.
+    """
+
+    def _read() -> str:
+        if not page.query_selector(SELECTORS["book_cover"]):
+            return ""
+        try:
+            page.wait_for_function(
+                "() => { const i = document.querySelector('#thumb-prop'); return !!i && i.complete; }",
+                timeout=6000,
+            )
+        except PlaywrightError:
+            return ""
+        info = page.evaluate(
+            """() => {
+                const img = document.querySelector('#thumb-prop');
+                if (!img) return null;
+                return { src: img.getAttribute('src') || '', loaded: img.naturalWidth > 0 };
+            }"""
+        )
+        if not info or not info.get("loaded"):
+            return ""
+        src = str(info.get("src") or "").strip()
+        if not src:
+            return ""
+        absolute = urljoin(page.url, src)
+        if not absolute.startswith(("http://", "https://")):
+            return ""
+        if SELECTORS["book_cover_placeholder"] in absolute.lower():
+            return ""
+        return absolute
+
+    return _with_navigation_retry(page, _read)
+
+
 def _select_vietnamese(page: Page) -> None:
     """Tự chọn Tiếng Việt nếu modal ngôn ngữ xuất hiện."""
 
@@ -777,6 +817,7 @@ def _crawl_novel(
         title = ""
         author = ""
         summary = ""
+        cover = ""
         if novel_id is None:
             existing_novel = get_novel_by_url(novel_url)
             if existing_novel:
@@ -812,12 +853,14 @@ def _crawl_novel(
             title = _text_or_empty(page, SELECTORS["book_title"]) or title
             author = _text_or_empty(page, SELECTORS["book_author"]) or author
             summary = _text_or_empty(page, SELECTORS["book_summary"]) or summary
+            cover = _book_cover_url(page) or cover
 
             novel_id = upsert_novel(
                 novel_url,
                 title or "Đang tải...",
                 author,
                 summary,
+                cover,
             )
         else:
             assert novel_id is not None
@@ -886,8 +929,9 @@ def _crawl_novel(
             title = _text_or_empty(page, SELECTORS["book_title"])
             author = _text_or_empty(page, SELECTORS["book_author"])
             summary = _text_or_empty(page, SELECTORS["book_summary"])
+            cover = _book_cover_url(page) or cover
             if title:
-                novel_id = upsert_novel(novel_url, title, author, summary)
+                novel_id = upsert_novel(novel_url, title, author, summary, cover)
 
         if not title:
             _wait_for_user(
@@ -896,12 +940,13 @@ def _crawl_novel(
             _save_browser_state(context)
             page.goto(novel_url, wait_until="domcontentloaded")
             title = _text_or_empty(page, SELECTORS["book_title"])
+            cover = _book_cover_url(page) or cover
             if not title:
                 raise RuntimeError("Không đọc được tên truyện. Kiểm tra captcha hoặc selector.")
 
         print(f"Truyện: {title}")
         print(f"Tác giả: {author or '(không rõ)'}")
-        novel_id = upsert_novel(novel_url, title, author, summary)
+        novel_id = upsert_novel(novel_url, title, author, summary, cover)
         _ctrl().on_novel(novel_id, title)
 
         existing_by_site_id = {ch.chapter_site_id: ch for ch in get_chapters_for_novel(novel_id)}
@@ -1121,6 +1166,7 @@ def preview_novel(novel_url: str) -> dict:
             title = _text_or_empty(page, SELECTORS["book_title"])
             author = _text_or_empty(page, SELECTORS["book_author"])
             summary = _text_or_empty(page, SELECTORS["book_summary"])
+            cover = _book_cover_url(page)
             if not title:
                 raise RuntimeError(
                     "Không đọc được tên truyện. Trang có thể đang chặn hoặc cần captcha."
@@ -1131,7 +1177,7 @@ def preview_novel(novel_url: str) -> dict:
             browser.close()
 
     init_db()
-    novel_id = upsert_novel(novel_url, title, author, summary)
+    novel_id = upsert_novel(novel_url, title, author, summary, cover)
     ensure_chapter_records(
         novel_id,
         [(chapter.site_id, index, chapter.title) for index, chapter in enumerate(chapters, start=1)],
@@ -1142,6 +1188,7 @@ def preview_novel(novel_url: str) -> dict:
         "title": title,
         "author": author,
         "summary": summary,
+        "coverUrl": cover,
         "chapterCount": len(chapters),
         "vipCount": vip_count,
     }

@@ -18,6 +18,9 @@ export class Novel {
     @Column({ type: 'text', nullable: true })
     summary!: string | null;
 
+    @Column({ name: 'cover_image', type: 'varchar', length: 2048, nullable: true })
+    coverImage!: string | null;
+
     @CreateDateColumn({ name: 'created_at', type: 'datetime' })
     createdAt!: Date;
 

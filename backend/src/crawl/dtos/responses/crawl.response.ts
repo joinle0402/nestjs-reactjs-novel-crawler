@@ -38,6 +38,9 @@ export class CrawlJobResponse {
     @ApiPropertyOptional({ nullable: true })
     novelTitle!: string | null;
 
+    @ApiPropertyOptional({ nullable: true, description: 'URL ảnh bìa hoặc tên file ảnh nội bộ của truyện' })
+    novelCoverImage!: string | null;
+
     @ApiProperty()
     url!: string;
 
@@ -127,6 +130,9 @@ export class CrawlPreviewResponse {
 
     @ApiProperty()
     summary!: string;
+
+    @ApiProperty({ description: 'URL ảnh bìa đọc được từ trang nguồn (rỗng nếu không có)' })
+    coverUrl!: string;
 
     @ApiProperty({ description: 'Số chương miễn phí trên trang nguồn' })
     chapterCount!: number;

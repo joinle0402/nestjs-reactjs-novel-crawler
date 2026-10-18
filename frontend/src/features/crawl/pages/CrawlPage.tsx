@@ -1,6 +1,15 @@
-import { Button, Card, Modal, Space, Table, Tag, Typography, message } from 'antd';
+import { Button, Card, Empty, Image, Modal, Progress, Space, Table, Tag, Tooltip, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { PlusOutlined } from '@ant-design/icons';
+import {
+    CaretRightOutlined,
+    CopyOutlined,
+    DeleteOutlined,
+    EditOutlined,
+    EyeOutlined,
+    PauseOutlined,
+    PlusOutlined,
+    SyncOutlined,
+} from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -23,9 +32,10 @@ import {
     useDeleteCrawlJobMutation,
 } from '@/features/crawl/hooks/useCrawlQueries.ts';
 import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
+import { DEFAULT_NOVEL_COVER, getNovelCoverUrl } from '@/features/novels/lib/novelCover.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { parseRouteId } from '@/shared/lib/parseRouteId.ts';
-import { formatDateTime } from '@/shared/lib/relativeTime.ts';
+import { formatDateTime, formatRelativeTime } from '@/shared/lib/relativeTime.ts';
 import { ListPagination } from '@/shared/ui/ListPagination.tsx';
 import { DEFAULT_PAGE_LIMIT, isRowActionTarget } from '@/shared/ui/listPagination.ts';
 import { fitTableScroll, useTableScrollFit } from '@/shared/ui/useTableScrollFit.ts';
@@ -40,6 +50,13 @@ const STATUS_FILTERS: { label: string; value: CrawlJobStatus | '' }[] = [
     { label: 'Lỗi', value: 'failed' },
     { label: 'Đã hủy', value: 'cancelled' },
 ];
+
+const SCOPE_LABEL: Record<CrawlScope, string> = {
+    missing: 'Chương còn thiếu',
+    failed: 'Chương lỗi',
+    chapters: 'Khoảng chương',
+    refresh: 'Cập nhật chương mới',
+};
 
 function statusColor(status: CrawlJobStatus): string {
     if (status === 'completed') {
@@ -57,6 +74,23 @@ function statusColor(status: CrawlJobStatus): string {
     return 'warning';
 }
 
+function hostOf(url: string): string {
+    try {
+        return new URL(url).host.replace(/^www\./, '');
+    } catch {
+        return '';
+    }
+}
+
+function jobMeta(job: CrawlJob): string {
+    const scope = job.scope === 'chapters' && job.chapterRange ? `Chương ${job.chapterRange}` : SCOPE_LABEL[job.scope];
+    return [scope, hostOf(job.url)].filter(Boolean).join(' · ');
+}
+
+function jobCoverSrc(job: CrawlJob): string {
+    return job.novelId ? getNovelCoverUrl({ id: job.novelId, coverImage: job.novelCoverImage }) : DEFAULT_NOVEL_COVER;
+}
+
 function draftFrom(job: CrawlJob, mode: 'edit' | 'clone'): CrawlTaskDraft {
     return {
         mode,
@@ -66,6 +100,42 @@ function draftFrom(job: CrawlJob, mode: 'edit' | 'clone'): CrawlTaskDraft {
         scope: job.scope,
         chapterRange: job.chapterRange ?? (job.scope === 'chapters' ? '' : ''),
     };
+}
+
+function CrawlProgressCell({ job }: { job: CrawlJob }) {
+    const { completed, failed, skipped, total, percent, detail } = job.progress;
+    const running = job.status === 'running';
+
+    if (total === 0) {
+        return (
+            <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
+                {isActiveCrawlJob(job) ? detail || 'Đang chuẩn bị…' : '—'}
+            </Typography.Text>
+        );
+    }
+
+    const pct = percent ?? Math.round((completed / total) * 100);
+    return (
+        <Tooltip title={detail}>
+            <div className="novel-progress">
+                <div className="novel-progress__head">
+                    <span className="novel-progress__value">
+                        {completed}
+                        <span className="novel-progress__total">/{total}</span>
+                    </span>
+                    <span className="novel-progress__pct">({pct}%)</span>
+                    {skipped > 0 ? <span className="novel-progress__pct">{skipped} bỏ qua</span> : null}
+                    {failed > 0 ? <span className="novel-progress__failed">{failed} lỗi</span> : null}
+                </div>
+                <Progress
+                    percent={pct}
+                    size="small"
+                    showInfo={false}
+                    status={failed > 0 ? 'exception' : running ? 'active' : undefined}
+                />
+            </div>
+        </Tooltip>
+    );
 }
 
 export function CrawlPage() {
@@ -127,6 +197,16 @@ export function CrawlPage() {
         setDraft(null);
     };
 
+    const openCreate = () => {
+        setDraft({
+            mode: 'create',
+            novelId: novelQuery.data?.id,
+            url: novelQuery.data?.url ?? '',
+            scope: 'chapters',
+            chapterRange: '',
+        });
+    };
+
     const run = (action: 'pause' | 'resume' | 'continue' | 'cancel' | 'retry', id: number) => {
         const mutation = { pause: pauseMutation, resume: resumeMutation, continue: continueMutation, cancel: cancelMutation, retry: retryMutation }[action];
         mutation.mutate(id, {
@@ -163,57 +243,173 @@ export function CrawlPage() {
         });
     };
 
+    const confirmBulkDelete = () => {
+        const ids = [...selectedJobIds];
+        Modal.confirm({
+            title: `Xóa ${ids.length} tác vụ?`,
+            content: 'Chỉ xóa lịch sử task. Nội dung chương đã cào vẫn giữ. Tác vụ đang hoạt động sẽ không xóa được.',
+            okText: 'Xóa',
+            okType: 'danger',
+            cancelText: 'Hủy',
+            onOk: async () => {
+                const results = await Promise.allSettled(ids.map((id) => deleteMutation.mutateAsync(id)));
+                const ok = results.filter((result) => result.status === 'fulfilled').length;
+                const failed = results.length - ok;
+                setSelectedJobIds([]);
+                if (failed > 0) {
+                    message.warning(`Đã xóa ${ok}/${results.length} tác vụ, ${failed} lỗi`);
+                } else {
+                    message.success(`Đã xóa ${ok} tác vụ`);
+                }
+            },
+        });
+    };
+
     const columns: ColumnsType<CrawlJob> = [
-        { title: 'ID', dataIndex: 'id', width: 70 },
+        { title: 'ID', dataIndex: 'id', width: 64 },
+        {
+            title: 'Ảnh',
+            key: 'cover',
+            width: 72,
+            render: (_, job) => (
+                <span className="novel-cover-cell" onClick={(event) => event.stopPropagation()}>
+                    <Image
+                        src={jobCoverSrc(job)}
+                        alt={job.novelTitle || job.url}
+                        width={44}
+                        height={60}
+                        fallback={DEFAULT_NOVEL_COVER}
+                        preview={{ mask: 'Xem ảnh' }}
+                    />
+                </span>
+            ),
+        },
         {
             title: 'Truyện',
-            render: (_, job) =>
-                job.novelId ? (
-                    <Link to={`/novels/${job.novelId}`}>{job.novelTitle || job.url}</Link>
-                ) : (
-                    <Typography.Text ellipsis style={{ maxWidth: 280 }}>
-                        {job.url}
-                    </Typography.Text>
-                ),
+            key: 'novel',
+            ellipsis: true,
+            render: (_, job) => (
+                <div className="novel-cell">
+                    <Link className="novel-cell__title" to={job.novelId ? `/novels/${job.novelId}` : '/crawl'}>
+                        {job.novelTitle || job.url}
+                    </Link>
+                    <span className="novel-cell__meta">{jobMeta(job)}</span>
+                </div>
+            ),
         },
         {
             title: 'Trạng thái',
             dataIndex: 'status',
-            width: 140,
-            render: (status: CrawlJobStatus) => <Tag color={statusColor(status)}>{CRAWL_STATUS_LABEL[status]}</Tag>,
+            width: 150,
+            render: (status: CrawlJobStatus, job) => {
+                const tag = (
+                    <Tag icon={status === 'running' ? <SyncOutlined spin /> : undefined} color={statusColor(status)}>
+                        {CRAWL_STATUS_LABEL[status]}
+                    </Tag>
+                );
+                return job.errorMessage ? <Tooltip title={job.errorMessage}>{tag}</Tooltip> : tag;
+            },
         },
         {
             title: 'Tiến độ',
-            width: 180,
-            render: (_, job) => job.progress.detail,
+            key: 'progress',
+            width: 190,
+            render: (_, job) => <CrawlProgressCell job={job} />,
         },
         {
             title: 'Tạo lúc',
             dataIndex: 'createdAt',
-            width: 180,
-            render: (value: string) => formatDateTime(value),
+            width: 120,
+            render: (value: string) => (
+                <Tooltip title={formatDateTime(value)}>
+                    <span className="novel-activity">{formatRelativeTime(value)}</span>
+                </Tooltip>
+            ),
         },
         {
             title: '',
             key: 'actions',
-            width: 180,
+            width: 168,
+            fixed: 'right',
             render: (_, job) => (
                 <Space size={0} onClick={(event) => event.stopPropagation()}>
-                    {canEditCrawlJob(job.status) ? (
-                        <Button type="link" size="small" onClick={() => setDraft(draftFrom(job, 'edit'))}>
-                            Sửa
-                        </Button>
+                    {job.status === 'running' ? (
+                        <Tooltip title="Tạm dừng">
+                            <Button
+                                type="text"
+                                size="small"
+                                icon={<PauseOutlined />}
+                                aria-label="Tạm dừng tác vụ"
+                                loading={pauseMutation.isPending}
+                                onClick={() => run('pause', job.id)}
+                            />
+                        </Tooltip>
                     ) : null}
-                    <Button type="link" size="small" onClick={() => setDraft(draftFrom(job, 'clone'))}>
-                        Clone
-                    </Button>
-                    <Button type="link" size="small" danger disabled={isActiveCrawlJob(job)} onClick={() => confirmDelete(job)}>
-                        Xóa
-                    </Button>
+                    {job.status === 'paused' || job.status === 'waiting_for_manual_action' ? (
+                        <Tooltip title={job.status === 'waiting_for_manual_action' ? 'Đã xử lý, tiếp tục' : 'Tiếp tục'}>
+                            <Button
+                                type="text"
+                                size="small"
+                                icon={<CaretRightOutlined />}
+                                aria-label="Tiếp tục tác vụ"
+                                loading={job.status === 'waiting_for_manual_action' ? continueMutation.isPending : resumeMutation.isPending}
+                                onClick={() => run(job.status === 'waiting_for_manual_action' ? 'continue' : 'resume', job.id)}
+                            />
+                        </Tooltip>
+                    ) : null}
+                    <Tooltip title="Xem chi tiết">
+                        <Button type="text" size="small" icon={<EyeOutlined />} aria-label="Xem chi tiết tác vụ" onClick={() => openDetail(job.id)} />
+                    </Tooltip>
+                    {canEditCrawlJob(job.status) ? (
+                        <Tooltip title="Sửa">
+                            <Button
+                                type="text"
+                                size="small"
+                                icon={<EditOutlined />}
+                                aria-label="Sửa tác vụ"
+                                onClick={() => setDraft(draftFrom(job, 'edit'))}
+                            />
+                        </Tooltip>
+                    ) : null}
+                    <Tooltip title="Nhân bản">
+                        <Button
+                            type="text"
+                            size="small"
+                            icon={<CopyOutlined />}
+                            aria-label="Nhân bản tác vụ"
+                            onClick={() => setDraft(draftFrom(job, 'clone'))}
+                        />
+                    </Tooltip>
+                    <Tooltip title={isActiveCrawlJob(job) ? 'Hủy tác vụ trước khi xóa' : 'Xóa'}>
+                        <Button
+                            type="text"
+                            size="small"
+                            className="row-action-delete"
+                            icon={<DeleteOutlined />}
+                            aria-label="Xóa tác vụ"
+                            disabled={isActiveCrawlJob(job)}
+                            onClick={() => confirmDelete(job)}
+                        />
+                    </Tooltip>
                 </Space>
             ),
         },
     ];
+
+    const hasSelection = selectedJobIds.length > 0;
+    const filterActive = statusFilter !== '';
+
+    const emptyNode = filterActive ? (
+        <Empty description="Không có tác vụ khớp bộ lọc.">
+            <Button onClick={() => { setStatusFilter(''); setPage(1); }}>Xóa bộ lọc</Button>
+        </Empty>
+    ) : (
+        <Empty description="Chưa có tác vụ cào.">
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                Thêm tác vụ
+            </Button>
+        </Empty>
+    );
 
     return (
         <Space orientation="vertical" size={16} style={{ width: '100%' }}>
@@ -221,38 +417,41 @@ export function CrawlPage() {
                 <Typography.Title level={4} style={{ margin: 0 }}>
                     Crawler
                 </Typography.Title>
-                <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() =>
-                        setDraft({
-                            mode: 'create',
-                            novelId: novelQuery.data?.id,
-                            url: novelQuery.data?.url ?? '',
-                            scope: 'chapters',
-                            chapterRange: '',
-                        })
-                    }
-                >
+                <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
                     Thêm tác vụ
                 </Button>
             </Space>
 
             <Card size="small" title="Lịch sử cào">
-                <Space wrap style={{ marginBottom: 12 }}>
-                    {STATUS_FILTERS.map((item) => (
-                        <Button
-                            key={item.label}
-                            size="small"
-                            type={statusFilter === item.value ? 'primary' : 'default'}
-                            onClick={() => {
-                                setStatusFilter(item.value);
-                                setPage(1);
-                            }}
-                        >
-                            {item.label}
-                        </Button>
-                    ))}
+                <Space wrap style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
+                    <Space wrap>
+                        {STATUS_FILTERS.map((item) => (
+                            <Button
+                                key={item.label}
+                                size="small"
+                                type={statusFilter === item.value ? 'primary' : 'default'}
+                                onClick={() => {
+                                    setStatusFilter(item.value);
+                                    setPage(1);
+                                }}
+                            >
+                                {item.label}
+                            </Button>
+                        ))}
+                    </Space>
+                    {hasSelection ? (
+                        <Space>
+                            <Typography.Text type="secondary">
+                                Đã chọn <strong>{selectedJobIds.length}</strong> tác vụ
+                            </Typography.Text>
+                            <Button danger icon={<DeleteOutlined />} onClick={confirmBulkDelete}>
+                                Xóa
+                            </Button>
+                            <Button type="text" onClick={() => setSelectedJobIds([])}>
+                                Bỏ chọn
+                            </Button>
+                        </Space>
+                    ) : null}
                 </Space>
                 <div ref={areaRef}>
                     <Table
@@ -267,8 +466,8 @@ export function CrawlPage() {
                             onChange: (keys) => setSelectedJobIds(keys.map(Number)),
                         }}
                         pagination={false}
-                        tableLayout="auto"
-                        scroll={fitTableScroll(undefined, bodyHeight)}
+                        locale={{ emptyText: emptyNode }}
+                        scroll={fitTableScroll(952, bodyHeight)}
                         onRow={(job) => ({
                             onClick: (event) => {
                                 if (isRowActionTarget(event.target)) {

@@ -241,6 +241,7 @@ def init_db() -> None:
                 title VARCHAR(500) NOT NULL,
                 author VARCHAR(255) NULL,
                 summary TEXT NULL,
+                cover_image VARCHAR(2048) NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
                 UNIQUE KEY uk_novels_url (url)
@@ -306,6 +307,8 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE chapters ADD COLUMN tts_chars_done INT NOT NULL DEFAULT 0"
             )
+        if not _column_exists(conn, "novels", "cover_image"):
+            conn.execute("ALTER TABLE novels ADD COLUMN cover_image VARCHAR(2048) NULL")
         if not _table_exists(conn, "playback_state"):
             conn.execute(
                 """
@@ -324,19 +327,21 @@ def init_db() -> None:
         _backfill_status_columns(conn)
 
 
-def upsert_novel(url: str, title: str, author: str, summary: str) -> int:
+def upsert_novel(url: str, title: str, author: str, summary: str, cover: str | None = None) -> int:
     now = _now()
+    cover_value = (cover or "").strip() or None
     with get_db() as conn:
         conn.execute(
             """
-            INSERT INTO novels (url, title, author, summary, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO novels (url, title, author, summary, cover_image, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 title = VALUES(title),
                 author = VALUES(author),
-                summary = VALUES(summary)
+                summary = VALUES(summary),
+                cover_image = COALESCE(VALUES(cover_image), cover_image)
             """,
-            (url, title, author, summary, now),
+            (url, title, author, summary, cover_value, now),
         )
         row = conn.execute("SELECT id FROM novels WHERE url = ?", (url,)).fetchone()
         return int(row["id"])

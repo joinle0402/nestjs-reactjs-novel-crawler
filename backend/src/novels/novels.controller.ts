@@ -1,14 +1,17 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Put, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { NovelsService } from './novels.service';
 import { Novel } from './entities/novel.entity';
 import { CreateNovelRequest } from './dtos/requests/create-novel.request';
 import { UpdateNovelRequest } from './dtos/requests/update-novel.request';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiConsumes, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { NovelStatsResponse } from './dtos/responses/novel-stats.response';
 import { NovelListItemResponse } from './dtos/responses/novel-list-item.response';
 import { SyncNovelChaptersResponse } from './dtos/responses/sync-chapters.response';
 import { UpdatePlaybackRequest } from './dtos/requests/update-playback.request';
 import { PlaybackState } from './entities/playback-state.entity';
+import { MAX_COVER_BYTES, type UploadedCover } from './novel-cover';
 
 @ApiTags('Novels')
 @Controller('novels')
@@ -41,6 +44,26 @@ export class NovelsController {
     @ApiOperation({ summary: 'Lấy vị trí nghe gần nhất' })
     async getPlayback(@Param('id', ParseIntPipe) id: number): Promise<PlaybackState | null> {
         return this.novelsService.getPlayback(id);
+    }
+
+    @Post(':id/cover')
+    @ApiConsumes('multipart/form-data')
+    @ApiOperation({ summary: 'Upload ảnh bìa truyện' })
+    @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_COVER_BYTES } }))
+    async uploadCover(@Param('id', ParseIntPipe) id: number, @UploadedFile() file: UploadedCover): Promise<Novel> {
+        return this.novelsService.uploadCover(id, file);
+    }
+
+    @Get(':id/cover')
+    @ApiOperation({ summary: 'Xem ảnh bìa truyện' })
+    async streamCover(@Param('id', ParseIntPipe) id: number, @Res() response: Response): Promise<void> {
+        return this.novelsService.streamCover(id, response);
+    }
+
+    @Delete(':id/cover')
+    @ApiOperation({ summary: 'Xóa ảnh bìa truyện' })
+    async removeCover(@Param('id', ParseIntPipe) id: number): Promise<Novel> {
+        return this.novelsService.removeCover(id);
     }
 
     @Put(':id/playback')

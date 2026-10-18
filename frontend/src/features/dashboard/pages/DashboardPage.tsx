@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
-import { Alert, Button, Card, Empty, Progress, Skeleton, Space, Statistic, Table, Tag, Tooltip, Typography, theme } from 'antd';
+import { Alert, Button, Card, Empty, Image, Progress, Skeleton, Space, Statistic, Table, Tag, Tooltip, Typography, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
     CloudDownloadOutlined,
@@ -17,6 +17,7 @@ import { useCurrentDriveJobQuery, useDriveStatusQuery } from '@/features/drive/h
 import { useHealthQuery } from '@/features/health/hooks/useHealthQuery.ts';
 import type { NovelListItem } from '@/features/novels/api/novelsApi.ts';
 import { useNovelsQuery } from '@/features/novels/hooks/useNovelsQuery.ts';
+import { DEFAULT_NOVEL_COVER, getNovelCoverUrl } from '@/features/novels/lib/novelCover.ts';
 import { statusOf } from '@/features/novels/lib/novelStatus.ts';
 import { formatDateTime, formatRelativeTime } from '@/shared/lib/relativeTime.ts';
 import { isActiveTtsJob, type TtsJob, type TtsJobStatus } from '@/features/tts/api/ttsApi.ts';
@@ -130,6 +131,23 @@ export function DashboardPage() {
     };
 
     const libraryColumns: ColumnsType<NovelListItem> = [
+        {
+            title: 'Ảnh',
+            key: 'cover',
+            width: 64,
+            render: (_, novel) => (
+                <span className="novel-cover-cell" onClick={(event) => event.stopPropagation()}>
+                    <Image
+                        src={getNovelCoverUrl(novel)}
+                        alt={novel.title}
+                        width={40}
+                        height={54}
+                        fallback={DEFAULT_NOVEL_COVER}
+                        preview={{ mask: 'Xem ảnh' }}
+                    />
+                </span>
+            ),
+        },
         {
             title: 'Truyện',
             dataIndex: 'title',

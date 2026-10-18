@@ -14,6 +14,7 @@ export type NovelListItem = {
     title: string;
     author: string | null;
     summary: string | null;
+    coverImage: string | null;
     createdAt: string;
     lastActivityAt: string;
     stats: NovelStatsCounts;
@@ -25,6 +26,7 @@ export type Novel = {
     title: string;
     author: string | null;
     summary: string | null;
+    coverImage: string | null;
     createdAt: string;
 };
 
@@ -45,6 +47,7 @@ export type CreateNovelBody = {
     title: string;
     author?: string;
     summary?: string;
+    coverImage?: string;
 };
 
 export type UpdateNovelBody = Partial<CreateNovelBody>;
@@ -66,6 +69,11 @@ export const createNovel = (body: CreateNovelBody) => axiosClient.post<Novel>('/
 export const updateNovel = (id: number, body: UpdateNovelBody) => axiosClient.put<Novel>(`/novels/${id}`, body);
 
 export const deleteNovel = (id: number) => axiosClient.delete<void>(`/novels/${id}`);
+
+export const uploadNovelCover = (id: number, body: FormData) =>
+    axiosClient.post<Novel>(`/novels/${id}/cover`, body);
+
+export const removeNovelCover = (id: number) => axiosClient.delete<Novel>(`/novels/${id}/cover`);
 
 export const syncNovelChapters = (id: number) =>
     axiosClient.post<SyncNovelChaptersResult>(`/novels/${id}/sync-chapters`, undefined, { timeout: 65000 });

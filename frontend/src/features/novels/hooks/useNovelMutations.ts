@@ -2,8 +2,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     createNovel,
     deleteNovel,
+    removeNovelCover,
     syncNovelChapters,
     updateNovel,
+    uploadNovelCover,
     type CreateNovelBody,
     type UpdateNovelBody,
 } from '@/features/novels/api/novelsApi.ts';
@@ -24,6 +26,28 @@ export function useUpdateNovelMutation() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: ({ id, body }: { id: number; body: UpdateNovelBody }) => updateNovel(id, body),
+        onSuccess: (novel) => {
+            void queryClient.invalidateQueries({ queryKey: novelKeys.lists() });
+            void queryClient.invalidateQueries({ queryKey: novelKeys.detail(novel.id) });
+        },
+    });
+}
+
+export function useUploadNovelCoverMutation() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ id, body }: { id: number; body: FormData }) => uploadNovelCover(id, body),
+        onSuccess: (novel) => {
+            void queryClient.invalidateQueries({ queryKey: novelKeys.lists() });
+            void queryClient.invalidateQueries({ queryKey: novelKeys.detail(novel.id) });
+        },
+    });
+}
+
+export function useRemoveNovelCoverMutation() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (id: number) => removeNovelCover(id),
         onSuccess: (novel) => {
             void queryClient.invalidateQueries({ queryKey: novelKeys.lists() });
             void queryClient.invalidateQueries({ queryKey: novelKeys.detail(novel.id) });

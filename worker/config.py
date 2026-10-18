@@ -173,6 +173,8 @@ SELECTORS = {
     "book_title": "#book_name2",
     "book_author": ".cap h2",
     "book_summary": "#book-sumary",
+    "book_cover": "#thumb-prop",
+    "book_cover_placeholder": "static.sangtacvietcdn.xyz/img/bookcover256.jpg",
     # Nội dung chương thật có attr cid; .contentbox đầu tiên thường là placeholder
     "content_box": ".contentbox[cid]",
     "language_option": '.seloption[value="vi"]',

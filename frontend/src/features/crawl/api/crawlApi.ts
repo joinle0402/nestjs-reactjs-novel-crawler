@@ -31,6 +31,7 @@ export type CrawlJob = {
     id: number;
     novelId: number | null;
     novelTitle: string | null;
+    novelCoverImage: string | null;
     url: string;
     scope: CrawlScope;
     chapterRange: string | null;
@@ -68,6 +69,7 @@ export type CrawlPreview = {
     title: string;
     author: string;
     summary: string;
+    coverUrl: string;
     chapterCount: number;
     vipCount: number;
 };

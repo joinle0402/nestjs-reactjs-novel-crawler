@@ -33,8 +33,9 @@ Use this map, then `search_graph` / `get_code_snippet` for the one symbol you wi
 - Store extracted chapter text as read. Do not rewrite, summarize, or invent chapter content.
 - Forbidden, captcha, and temporary server errors recover or wait inside `worker/crawler.py`. Do not drop those paths when adding a feature.
 - `browser_state.json` is gitignored session state. Do not commit it or print cookies.
+- Novel covers live in `novels.cover_image`: a source URL from a crawl/preview, or an uploaded filename under `worker/covers/`. `GET /novels/:id/cover` serves the file or proxies the source URL; upload via `POST /novels/:id/cover`; both upsert paths preserve an existing cover when the scrape returns none.
 
-API surface on `CrawlController`: `lookup`, `preview`, `logs`, `current`, `list`, `create`, `getOne`, `update`, `remove`, `chapters`, `pause`, `resume`, `continueManual`, `cancel`, `retry`. `preview` reads title, author, summary, and the free chapter list with Playwright `headless=True`, upserts the novel, and inserts chapter rows that do not exist yet. It does not write chapter text or the browser session.
+API surface on `CrawlController`: `lookup`, `preview`, `logs`, `current`, `list`, `create`, `getOne`, `update`, `remove`, `chapters`, `pause`, `resume`, `continueManual`, `cancel`, `retry`. `preview` reads title, author, summary, cover image, and the free chapter list with Playwright `headless=True`, upserts the novel, and inserts chapter rows that do not exist yet. It does not write chapter text or the browser session.
 
 ## Where to look
 
@@ -46,7 +47,7 @@ API surface on `CrawlController`: `lookup`, `preview`, `logs`, `current`, `list`
 | Page navigation, forbidden, captcha | `_goto_chapter`, `_recover_from_forbidden`, `_wait_for_content_with_captcha` |
 | Chapter list or body selectors | `_get_chapter_list`, `_extract_chapter_content` |
 | URL normalization | `backend/src/crawl/novel-url.ts` and `_normalize_novel_url` |
-| Novel page preview (title, author, summary, chapter count) | `preview_novel` in `worker/crawler.py`, `GET /crawl/preview` |
+| Novel page preview (title, author, summary, cover, chapter count) | `preview_novel` in `worker/crawler.py`, `GET /crawl/preview` |
 | Sync chapter list without the worker (plain HTTP) | `fetchFreeChapterList` in `backend/src/novels/novel-chapters-sync.ts`, `POST /novels/:id/sync-chapters` |
 | Refresh scope planning (HTTP sync + crawl missing) | `resolveTarget` scope `refresh` in `backend/src/crawl/crawl.service.ts` |
 
@@ -75,3 +76,6 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-10-11 — `preview` now upserts the novel and inserts missing chapter rows. Adding a novel with an existing URL updates that novel.
 - 2026-10-17 — Add `POST /novels/:id/sync-chapters`: plain HTTP `chapterlist` fetch (home page for cookie, then API) inserts missing free chapters and returns the added count. No Playwright/worker.
 - 2026-10-17 — Crawl scope `refresh` now syncs the list over HTTP in `resolveTarget` and stores the missing chapter numbers; the worker only forces the in-browser list API for legacy jobs without `chapter_numbers`.
+- 2026-10-18 — Preview/crawl read the cover (`#thumb-prop` / `og:image`) and save it to `novels.cover_image`; `POST/GET/DELETE /novels/:id/cover` store and serve uploaded covers from `worker/covers/`.
+- 2026-10-18 — Crawl job responses add `novelCoverImage` so the dashboard and crawler tables can show the same cover thumbnail as the novel list.
+- 2026-10-18 — Add `worker/scripts/sync_novel_covers.py` to backfill covers for existing novels (`--apply`, `--force`, `--novel-id`). Cover scraping accepts `#thumb-prop` only when the image actually loaded and skips the `bookcover256.jpg` placeholder, since some source CDNs are unreachable.

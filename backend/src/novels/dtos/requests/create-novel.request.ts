@@ -1,5 +1,5 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { IsNotEmpty, IsOptional, IsString, IsUrl } from "class-validator";
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 
 export class CreateNovelRequest {
     @IsUrl()
@@ -25,4 +25,10 @@ export class CreateNovelRequest {
         required: false,
     })
     summary?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(2048)
+    @ApiPropertyOptional({ description: 'URL ảnh bìa hoặc tên file ảnh nội bộ' })
+    coverImage?: string;
 }

@@ -34,6 +34,9 @@ export class NovelListItemResponse {
     @ApiPropertyOptional({ nullable: true })
     summary!: string | null;
 
+    @ApiPropertyOptional({ nullable: true, description: 'URL ảnh bìa hoặc tên file ảnh nội bộ' })
+    coverImage!: string | null;
+
     @ApiProperty()
     createdAt!: Date;
 
@@ -46,13 +49,15 @@ export class NovelListItemResponse {
     stats!: NovelStatsCounts;
 }
 
-export function toStatsCounts(raw?: {
-    total?: string | number | null;
-    crawled?: string | number | null;
-    ttsDone?: string | number | null;
-    crawlFailed?: string | number | null;
-    ttsFailed?: string | number | null;
-} | null): NovelStatsCounts {
+export function toStatsCounts(
+    raw?: {
+        total?: string | number | null;
+        crawled?: string | number | null;
+        ttsDone?: string | number | null;
+        crawlFailed?: string | number | null;
+        ttsFailed?: string | number | null;
+    } | null,
+): NovelStatsCounts {
     return {
         total: Number(raw?.total ?? 0),
         crawled: Number(raw?.crawled ?? 0),

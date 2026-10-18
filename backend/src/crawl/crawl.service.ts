@@ -440,6 +440,7 @@ export class CrawlService {
             id: job.id,
             novelId: job.novelId,
             novelTitle: novel?.title ?? null,
+            novelCoverImage: novel?.coverImage ?? null,
             url: job.url,
             scope: job.scope,
             chapterRange: job.chapterRange,

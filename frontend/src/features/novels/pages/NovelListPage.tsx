@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Empty, Input, Modal, Progress, Select, Space, Table, Tooltip, Typography, message, theme } from 'antd';
+import { Alert, Button, Card, Empty, Image, Input, Modal, Progress, Select, Space, Table, Tooltip, Typography, message, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, LinkOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -12,8 +12,9 @@ import {
     useSyncNovelChaptersMutation,
     useUpdateNovelMutation,
 } from '@/features/novels/hooks/useNovelMutations.ts';
-import { NovelFormModal, type NovelFormValues } from '@/features/novels/components/NovelFormModal.tsx';
+import { NovelFormDrawer, type NovelFormValues } from '@/features/novels/components/NovelFormDrawer.tsx';
 import type { NovelListItem } from '@/features/novels/api/novelsApi.ts';
+import { DEFAULT_NOVEL_COVER, getNovelCoverUrl } from '@/features/novels/lib/novelCover.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { ListPagination } from '@/shared/ui/ListPagination.tsx';
 import { DEFAULT_PAGE_LIMIT, isRowActionTarget } from '@/shared/ui/listPagination.ts';
@@ -343,6 +344,24 @@ export function NovelListPage() {
             render: (_text, _record, index) => (currentPage - 1) * pageSize + index + 1,
         },
         {
+            title: 'Ảnh',
+            key: 'cover',
+            width: 72,
+            render: (_, novel) => (
+                <span className="novel-cover-cell" onClick={(event) => event.stopPropagation()}>
+                    <Image
+                        src={getNovelCoverUrl(novel)}
+                        alt={novel.title}
+                        className="novel-cover"
+                        width={44}
+                        height={60}
+                        fallback={DEFAULT_NOVEL_COVER}
+                        preview={{ mask: 'Xem ảnh' }}
+                    />
+                </span>
+            ),
+        },
+        {
             title: 'Truyện',
             dataIndex: 'title',
             ellipsis: true,
@@ -568,7 +587,7 @@ export function NovelListPage() {
                                     );
                                 },
                             })}
-                            scroll={fitTableScroll(880, bodyHeight)}
+                            scroll={fitTableScroll(940, bodyHeight)}
                         />
                         {!isLoading && data?.length ? (
                             <ListPagination
@@ -590,7 +609,7 @@ export function NovelListPage() {
                 )}
             </Card>
 
-            <NovelFormModal
+            <NovelFormDrawer
                 open={formOpen}
                 novel={editing}
                 confirmLoading={createMutation.isPending || updateMutation.isPending}

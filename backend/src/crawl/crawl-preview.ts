@@ -14,6 +14,7 @@ type PreviewPayload = {
     title?: unknown;
     author?: unknown;
     summary?: unknown;
+    coverUrl?: unknown;
     chapterCount?: unknown;
     vipCount?: unknown;
 };
@@ -109,6 +110,7 @@ function parsePreview(stdout: string, url: string): CrawlPreviewResponse | null 
         title,
         author: typeof payload.author === 'string' ? payload.author.trim() : '',
         summary: typeof payload.summary === 'string' ? payload.summary.trim() : '',
+        coverUrl: typeof payload.coverUrl === 'string' ? payload.coverUrl.trim() : '',
         chapterCount,
         vipCount,
     };
