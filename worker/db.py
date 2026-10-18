@@ -22,6 +22,9 @@ STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 STATUS_SKIPPED = "skipped"
 
+SOURCE_SANGTACVIET = "sangtacviet"
+SOURCE_WIKICV = "wikicv"
+
 Row = Dict[str, Any]
 
 
@@ -48,6 +51,7 @@ class Chapter:
     tts_chars_total: int = 0
     tts_chars_done: int = 0
     has_bgm: bool = False
+    source: str = SOURCE_SANGTACVIET
 
 
 @dataclass
@@ -353,6 +357,7 @@ def upsert_chapter(
     chapter_number: int,
     title: str,
     content: str,
+    source: str = SOURCE_SANGTACVIET,
 ) -> int:
     now = _now()
     crawl_status = STATUS_COMPLETED if chapter_has_content(content) else STATUS_PENDING
@@ -361,21 +366,73 @@ def upsert_chapter(
             """
             INSERT INTO chapters
                 (novel_id, chapter_site_id, chapter_number, title, content,
-                 crawled_at, crawl_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 source, crawled_at, crawl_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 title = VALUES(title),
                 content = VALUES(content),
+                source = VALUES(source),
                 crawled_at = VALUES(crawled_at),
                 crawl_status = VALUES(crawl_status)
             """,
-            (novel_id, chapter_site_id, chapter_number, title, content, now, crawl_status),
+            (novel_id, chapter_site_id, chapter_number, title, content, source, now, crawl_status),
         )
         row = conn.execute(
             "SELECT id FROM chapters WHERE novel_id = ? AND chapter_site_id = ?",
             (novel_id, chapter_site_id),
         ).fetchone()
         chapter_id = int(row["id"])
+        _sync_tts_chars_total_on_conn(conn, chapter_id, content)
+        return chapter_id
+
+
+def upsert_chapter_at_number(
+    novel_id: int,
+    chapter_number: int,
+    chapter_site_id: str,
+    title: str,
+    content: str,
+    source: str = SOURCE_SANGTACVIET,
+) -> int:
+    """Ghi chương theo SỐ chương, dùng khi cào nối từ nguồn khác.
+
+    Nếu đã có record cùng số chương (kể cả từ nguồn khác) thì cập nhật tại chỗ
+    để tránh trùng số; ngược lại thì insert bình thường.
+    """
+    now = _now()
+    crawl_status = STATUS_COMPLETED if chapter_has_content(content) else STATUS_PENDING
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id FROM chapters WHERE novel_id = ? AND chapter_number = ? ORDER BY id LIMIT 1",
+            (novel_id, chapter_number),
+        ).fetchone()
+        if row:
+            chapter_id = int(row["id"])
+            conn.execute(
+                """
+                UPDATE chapters
+                SET chapter_site_id = ?, title = ?, content = ?, source = ?,
+                    crawled_at = ?, crawl_status = ?
+                WHERE id = ?
+                """,
+                (chapter_site_id, title, content, source, now, crawl_status, chapter_id),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO chapters
+                    (novel_id, chapter_site_id, chapter_number, title, content,
+                     source, crawled_at, crawl_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (novel_id, chapter_site_id, chapter_number, title, content, source, now, crawl_status),
+            )
+            chapter_id = int(
+                conn.execute(
+                    "SELECT id FROM chapters WHERE novel_id = ? AND chapter_site_id = ?",
+                    (novel_id, chapter_site_id),
+                ).fetchone()["id"]
+            )
         _sync_tts_chars_total_on_conn(conn, chapter_id, content)
         return chapter_id
 
@@ -466,6 +523,7 @@ def ensure_chapter_record(
     chapter_site_id: str,
     chapter_number: int,
     title: str,
+    source: str = SOURCE_SANGTACVIET,
 ) -> None:
     """Tạo record chương nếu chưa có (không ghi đè content đã cào)."""
     now = _now()
@@ -480,14 +538,15 @@ def ensure_chapter_record(
             """
             INSERT INTO chapters
                 (novel_id, chapter_site_id, chapter_number, title, content,
-                 crawled_at, crawl_status, tts_status)
-            VALUES (?, ?, ?, ?, '', ?, ?, ?)
+                 source, crawled_at, crawl_status, tts_status)
+            VALUES (?, ?, ?, ?, '', ?, ?, ?, ?)
             """,
             (
                 novel_id,
                 chapter_site_id,
                 chapter_number,
                 title,
+                source,
                 now,
                 STATUS_PENDING,
                 STATUS_PENDING,
@@ -495,7 +554,11 @@ def ensure_chapter_record(
         )
 
 
-def ensure_chapter_records(novel_id: int, chapters: list[tuple[str, int, str]]) -> int:
+def ensure_chapter_records(
+    novel_id: int,
+    chapters: list[tuple[str, int, str]],
+    source: str = SOURCE_SANGTACVIET,
+) -> int:
     """Tạo các chương chưa có. Không ghi đè nội dung đã cào."""
     if not chapters:
         return 0
@@ -516,15 +579,15 @@ def ensure_chapter_records(novel_id: int, chapters: list[tuple[str, int, str]]) 
         inserted = 0
         for start in range(0, len(pending), 200):
             chunk = pending[start : start + 200]
-            placeholders = ", ".join(["(?, ?, ?, ?, '', ?, ?, ?)"] * len(chunk))
+            placeholders = ", ".join(["(?, ?, ?, ?, '', ?, ?, ?, ?)"] * len(chunk))
             params: list[Any] = []
             for site_id, number, title in chunk:
-                params.extend([novel_id, site_id, number, title, now, STATUS_PENDING, STATUS_PENDING])
+                params.extend([novel_id, site_id, number, title, source, now, STATUS_PENDING, STATUS_PENDING])
             conn.execute(
                 f"""
                 INSERT INTO chapters
                     (novel_id, chapter_site_id, chapter_number, title, content,
-                     crawled_at, crawl_status, tts_status)
+                     source, crawled_at, crawl_status, tts_status)
                 VALUES {placeholders}
                 """,
                 params,
@@ -601,6 +664,7 @@ def _row_to_chapter(row: Row) -> Chapter:
         tts_chars_total=int(row["tts_chars_total"] or 0),
         tts_chars_done=int(row["tts_chars_done"] or 0),
         has_bgm=bool(row.get("has_bgm")),
+        source=str(row.get("source") or SOURCE_SANGTACVIET),
     )
 
 
@@ -610,7 +674,7 @@ def get_chapters_for_novel(novel_id: int) -> list[Chapter]:
             """
             SELECT id, novel_id, chapter_site_id, chapter_number, title, content,
                    mp3_path, crawl_status, tts_status,
-                   tts_chars_total, tts_chars_done, has_bgm
+                   tts_chars_total, tts_chars_done, has_bgm, source
             FROM chapters
             WHERE novel_id = ?
             ORDER BY chapter_number

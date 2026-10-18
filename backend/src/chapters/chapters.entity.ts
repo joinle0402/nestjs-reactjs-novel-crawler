@@ -2,6 +2,9 @@ import { JobStatus } from 'src/common/enums/job-status.enum';
 import { Novel } from 'src/novels/entities/novel.entity';
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 
+export const CHAPTER_SOURCES = ['sangtacviet', 'wikicv'] as const;
+export type ChapterSource = (typeof CHAPTER_SOURCES)[number];
+
 @Entity('chapters')
 @Unique('uk_chapters_novel_site', ['novelId', 'chapterSiteId'])
 export class Chapter {
@@ -17,6 +20,9 @@ export class Chapter {
 
     @Column({ name: 'chapter_site_id', type: 'varchar', length: 191 })
     chapterSiteId!: string;
+
+    @Column({ name: 'source', type: 'varchar', length: 20, default: 'sangtacviet' })
+    source!: ChapterSource;
 
     @Column({ name: 'chapter_number', type: 'int' })
     chapterNumber!: number;

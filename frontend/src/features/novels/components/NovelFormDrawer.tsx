@@ -253,7 +253,7 @@ export function NovelFormDrawer({ open, novel, confirmLoading, onCancel, onSubmi
                                 { type: 'url', message: 'URL không hợp lệ' },
                             ]}
                         >
-                            <Input placeholder="https://sangtacviet.com/truyen/..." />
+                            <Input placeholder="https://sangtacviet.com/truyen/... hoặc https://wikicv.org/truyen/..." />
                         </Form.Item>
                         <Button loading={reading} onClick={() => void readFromUrl()}>
                             Đọc trang

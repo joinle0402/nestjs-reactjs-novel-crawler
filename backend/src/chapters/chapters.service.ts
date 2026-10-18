@@ -16,6 +16,7 @@ export type ChapterListItem = {
     id: number;
     novelId: number;
     chapterSiteId: string;
+    source: Chapter['source'];
     chapterNumber: number;
     title: string;
     crawlStatus: Chapter['crawlStatus'];
@@ -48,6 +49,7 @@ export class ChaptersService {
                 'chapter.id',
                 'chapter.novelId',
                 'chapter.chapterSiteId',
+                'chapter.source',
                 'chapter.chapterNumber',
                 'chapter.title',
                 'chapter.crawlStatus',
@@ -116,6 +118,7 @@ export class ChaptersService {
             id: model.id,
             novelId: model.novelId,
             chapterSiteId: model.chapterSiteId,
+            source: model.source,
             chapterNumber: model.chapterNumber,
             title: model.title,
             content: model.content,
@@ -262,6 +265,7 @@ export class ChaptersService {
             id: chapter.id,
             novelId: chapter.novelId,
             chapterSiteId: chapter.chapterSiteId,
+            source: chapter.source,
             chapterNumber: chapter.chapterNumber,
             title: chapter.title,
             crawlStatus: chapter.crawlStatus,

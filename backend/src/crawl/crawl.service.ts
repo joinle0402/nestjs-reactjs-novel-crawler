@@ -300,11 +300,8 @@ export class CrawlService {
         let url = request.url?.trim() ? this.normalize(request.url) : '';
         if (novelId) {
             const novel = await this.novelsService.findOne(novelId);
-            if (url) {
-                throwUnless(novel.url === url, 'URL không khớp truyện đã chọn');
-            } else {
-                url = novel.url;
-            }
+            // URL khác novel.url = cào nối từ nguồn khác (ví dụ wikicv); giữ novelId đã chọn.
+            url = url || novel.url;
         } else {
             const existing = await this.novelsRepository.findOne({ where: { url } });
             novelId = existing?.id ?? null;
@@ -331,7 +328,7 @@ export class CrawlService {
 
         if (request.scope === 'refresh') {
             throwUnless(novelId, 'Cần truyện đã có trong thư viện để cập nhật danh sách chương mới');
-            await this.novelsService.syncChapters(novelId);
+            await this.novelsService.syncChapters(novelId, url);
             const refreshedFacts = await this.loadFacts(novelId);
             const numbers = refreshedFacts.filter((fact) => !fact.hasContent).map((fact) => fact.chapterNumber);
             throwUnless(numbers.length > 0, 'Danh sách chương đã cập nhật, không có chương nào cần cào');

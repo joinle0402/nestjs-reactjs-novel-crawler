@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { JobStatus } from 'src/common/enums/job-status.enum';
+import { CHAPTER_SOURCES } from '../../chapters.entity';
+import type { ChapterSource } from '../../chapters.entity';
 
 export class ChapterNeighbor {
     @ApiProperty()
@@ -27,6 +29,9 @@ export class ChapterDetailResponse {
 
     @ApiProperty()
     chapterSiteId!: string;
+
+    @ApiProperty({ enum: CHAPTER_SOURCES, description: 'Nguồn đã cào chương này' })
+    source!: ChapterSource;
 
     @ApiProperty()
     chapterNumber!: number;

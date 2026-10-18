@@ -3,9 +3,16 @@ import { axiosClient } from '@/shared/api/axiosClient.ts';
 export type NovelStatsCounts = {
     total: number;
     crawled: number;
+    lastCrawled: number | null;
     ttsDone: number;
     crawlFailed: number;
     ttsFailed: number;
+};
+
+export type NovelSourceStats = {
+    source: string;
+    total: number;
+    crawled: number;
 };
 
 export type NovelListItem = {
@@ -18,6 +25,7 @@ export type NovelListItem = {
     createdAt: string;
     lastActivityAt: string;
     stats: NovelStatsCounts;
+    sourceStats: NovelSourceStats[];
 };
 
 export type Novel = {

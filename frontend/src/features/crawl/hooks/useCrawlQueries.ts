@@ -97,10 +97,11 @@ export function useCrawlJobWatch() {
 
 export function useCrawlLookupQuery(url: string) {
     const trimmed = url.trim();
+    const isSupportedUrl = /sangtacviet\.com\/truyen\//.test(trimmed) || /wikicv\.(?:org|net)\/truyen\//.test(trimmed);
     return useQuery({
         queryKey: crawlKeys.lookup(trimmed),
         queryFn: () => lookupCrawlUrl(trimmed),
-        enabled: trimmed.includes('sangtacviet.com/truyen/'),
+        enabled: isSupportedUrl,
         retry: false,
     });
 }

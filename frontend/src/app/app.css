@@ -242,6 +242,10 @@ a {
     color: var(--sub-text);
 }
 
+.chapter-boundary-row > td {
+    border-bottom: 2px dashed var(--sub-border) !important;
+}
+
 @keyframes dot-pulse {
     0%,
     100% {

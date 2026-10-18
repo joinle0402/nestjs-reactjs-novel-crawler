@@ -1,6 +1,8 @@
 import { Alert, Button, Drawer, Form, Input, Radio, Space, Typography, message } from 'antd';
 import { useEffect } from 'react';
 import type { CrawlScope, CreateCrawlJobBody } from '@/features/crawl/api/crawlApi.ts';
+import { CHAPTER_SOURCE_LABEL } from '@/features/chapters/api/chaptersApi.ts';
+import type { ChapterSource } from '@/features/chapters/api/chaptersApi.ts';
 import { useCrawlLookupQuery, useCreateCrawlJobMutation, useUpdateCrawlJobMutation } from '@/features/crawl/hooks/useCrawlQueries.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 
@@ -11,13 +13,32 @@ export type CrawlTaskDraft = {
     url: string;
     scope: CrawlScope;
     chapterRange: string;
+    source?: ChapterSource;
 };
 
 type FormValues = {
     url: string;
+    source: ChapterSource;
     scope: CrawlScope;
     chapterRange?: string;
 };
+
+const SOURCE_PLACEHOLDER: Record<ChapterSource, string> = {
+    sangtacviet: 'https://sangtacviet.com/truyen/...',
+    wikicv: 'https://wikicv.org/truyen/...',
+};
+
+const SOURCE_OPTIONS: ChapterSource[] = ['sangtacviet', 'wikicv'];
+
+function detectUrlSource(url: string): ChapterSource | null {
+    if (/sangtacviet\./i.test(url)) {
+        return 'sangtacviet';
+    }
+    if (/wikicv\./i.test(url)) {
+        return 'wikicv';
+    }
+    return null;
+}
 
 type CrawlTaskDrawerProps = {
     draft: CrawlTaskDraft | null;
@@ -36,6 +57,7 @@ export function CrawlTaskDrawer({ draft, blocked, onClose, onSaved }: CrawlTaskD
     const [form] = Form.useForm<FormValues>();
     const scope = Form.useWatch('scope', form) ?? draft?.scope ?? 'chapters';
     const url = Form.useWatch('url', form) ?? draft?.url ?? '';
+    const source = Form.useWatch('source', form) ?? 'sangtacviet';
     const lookupQuery = useCrawlLookupQuery(url);
     const createMutation = useCreateCrawlJobMutation();
     const updateMutation = useUpdateCrawlJobMutation();
@@ -47,6 +69,7 @@ export function CrawlTaskDrawer({ draft, blocked, onClose, onSaved }: CrawlTaskD
         }
         form.setFieldsValue({
             url: draft.url,
+            source: draft.source ?? detectUrlSource(draft.url) ?? 'sangtacviet',
             scope: draft.scope || 'chapters',
             chapterRange: draft.chapterRange,
         });
@@ -60,8 +83,14 @@ export function CrawlTaskDrawer({ draft, blocked, onClose, onSaved }: CrawlTaskD
         if (!draft) {
             return;
         }
+        const trimmedUrl = values.url.trim();
+        const detected = detectUrlSource(trimmedUrl);
+        if (detected && detected !== values.source) {
+            message.error(`URL thuộc nguồn ${CHAPTER_SOURCE_LABEL[detected]}, không khớp nguồn đã chọn.`);
+            return;
+        }
         const body: CreateCrawlJobBody = {
-            url: values.url.trim(),
+            url: trimmedUrl,
             novelId: lookup?.novelId ?? draft.novelId,
             scope: values.scope,
             chapterRange: values.scope === 'chapters' ? values.chapterRange?.trim() : undefined,
@@ -102,9 +131,23 @@ export function CrawlTaskDrawer({ draft, blocked, onClose, onSaved }: CrawlTaskD
                 </Button>
             }
         >
-            <Form form={form} layout="vertical" initialValues={{ scope: 'chapters' }} onFinish={submit}>
+            <Form form={form} layout="vertical" initialValues={{ scope: 'chapters', source: 'sangtacviet' }} onFinish={submit}>
+                <Form.Item
+                    name="source"
+                    label="Nguồn cào"
+                    rules={[{ required: true, message: 'Chọn nguồn' }]}
+                    extra="Chương cào sẽ được gắn nguồn này. Dán URL của đúng nguồn."
+                >
+                    <Radio.Group optionType="button" buttonStyle="solid">
+                        {SOURCE_OPTIONS.map((option) => (
+                            <Radio.Button key={option} value={option}>
+                                {CHAPTER_SOURCE_LABEL[option]}
+                            </Radio.Button>
+                        ))}
+                    </Radio.Group>
+                </Form.Item>
                 <Form.Item name="url" label="URL truyện" rules={[{ required: true, message: 'Nhập URL' }]}>
-                    <Input placeholder="https://sangtacviet.com/truyen/..." />
+                    <Input placeholder={SOURCE_PLACEHOLDER[source] ?? SOURCE_PLACEHOLDER.sangtacviet} />
                 </Form.Item>
                 {lookupError ? <Alert type="error" showIcon title={lookupError} style={{ marginBottom: 12 }} /> : null}
                 {lookup ? (
@@ -114,6 +157,15 @@ export function CrawlTaskDrawer({ draft, blocked, onClose, onSaved }: CrawlTaskD
                         style={{ marginBottom: 12 }}
                         title={lookup.novelId ? `Đã có trong thư viện: ${lookup.title}` : 'Truyện mới — worker sẽ tạo sau khi đọc được tên'}
                         description={lookup.novelId ? `${lookup.missing} chương chưa có nội dung, ${lookup.failed} chương lỗi, ${lookup.total} chương trong DB` : undefined}
+                    />
+                ) : null}
+                {draft?.novelId && !lookup?.novelId ? (
+                    <Alert
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: 12 }}
+                        title={`Cào nối vào truyện #${draft.novelId}`}
+                        description="Chương đã có nội dung (theo số chương) sẽ được bỏ qua; chương mới gắn nguồn đã chọn."
                     />
                 ) : null}
                 <Form.Item name="scope" label="Phạm vi chương">

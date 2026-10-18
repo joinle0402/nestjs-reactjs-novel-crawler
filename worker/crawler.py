@@ -19,7 +19,6 @@ import sys
 import time
 import traceback
 from contextvars import ContextVar
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin
@@ -70,16 +69,11 @@ from db import (
     init_db,
     update_crawl_status,
     upsert_chapter,
+    upsert_chapter_at_number,
     upsert_novel,
 )
+from sources import ChapterInfo, NovelSource, SourceError, create_source, is_wikicv
 from tts import generate_mp3_for_novel
-
-
-@dataclass
-class ChapterInfo:
-    site_id: str
-    title: str
-    url: str
 
 
 class CrawlForbiddenError(RuntimeError):
@@ -100,7 +94,13 @@ _SERVER_TEMP_ERROR_MARKERS = (
 
 
 def _normalize_novel_url(url: str) -> str:
-    url = url.strip()
+    url = (url or "").strip()
+    if "#" in url:
+        url = url.split("#", 1)[0].strip()
+    if not url:
+        return url
+    if is_wikicv(url):
+        return url.rstrip("/")
     if not url.endswith("/"):
         url += "/"
     return url
@@ -756,12 +756,35 @@ def _crawl_novel(
             raise ValueError(f"Không tìm thấy novel id={novel_id} trong DB.")
         db_url = _normalize_novel_url(novel.url)
         if novel_url:
-            if _normalize_novel_url(novel_url) != db_url:
+            # Cho phép URL nguồn khác (adapter HTTP) để cào nối vào truyện đã có.
+            if _normalize_novel_url(novel_url) != db_url and create_source(_normalize_novel_url(novel_url)) is None:
                 raise ValueError("URL không khớp với --novel-id.")
         else:
             novel_url = novel.url
 
     novel_url = _normalize_novel_url(novel_url or NOVEL_URL)
+
+    adapter = create_source(novel_url)
+    if adapter is not None:
+        print(f"URL truyện: {novel_url} (nguồn: {adapter.name})")
+        try:
+            novel_id = _crawl_novel_http(
+                adapter,
+                novel_url,
+                max_chapters=max_chapters,
+                chapter_numbers=chapter_numbers,
+                novel_id=novel_id,
+                refresh_chapter_list=refresh_chapter_list,
+            )
+        finally:
+            adapter.close()
+        if run_tts:
+            _run_tts_after_crawl(novel_id, chapter_numbers, tts_chapter_numbers)
+        else:
+            print("\n=== Cào xong (bỏ qua TTS) ===")
+        print("Hoàn tất!")
+        return novel_id
+
     if "sangtacviet.com" not in novel_url:
         raise ValueError("URL phải thuộc sangtacviet.com")
 
@@ -1055,6 +1078,192 @@ def _crawl_novel(
     return novel_id
 
 
+def _chapters_from_db_http(adapter: NovelSource, db_chapters) -> list[ChapterInfo]:
+    return [
+        ChapterInfo(
+            site_id=ch.chapter_site_id,
+            title=ch.title,
+            url=adapter.chapter_url(ch.chapter_site_id),
+        )
+        for ch in db_chapters
+    ]
+
+
+def _run_tts_after_crawl(
+    novel_id: int,
+    chapter_numbers: frozenset[int] | None,
+    tts_chapter_numbers: frozenset[int] | None,
+) -> None:
+    novel = get_novel_by_id(novel_id)
+    title = novel.title if novel else ""
+    print("\n=== Cào xong. Bắt đầu tạo MP3 ===")
+    tts_range = tts_chapter_numbers if tts_chapter_numbers is not None else chapter_numbers
+    mp3_files = generate_mp3_for_novel(novel_id, title, chapter_numbers=tts_range)
+    if mp3_files:
+        print(f"Đã tạo {len(mp3_files)} file MP3 trong thư mục output/mp3/")
+
+
+def _crawl_novel_http(
+    adapter: NovelSource,
+    novel_url: str,
+    *,
+    max_chapters: int | None,
+    chapter_numbers: frozenset[int] | None,
+    novel_id: int | None,
+    refresh_chapter_list: bool,
+) -> int:
+    """Cào bằng adapter HTTP (không mở trình duyệt)."""
+    if chapter_numbers is None and max_chapters is None and not refresh_chapter_list:
+        max_chapters = MAX_CHAPTERS
+
+    required_numbers = _resolve_chapter_numbers(max_chapters, chapter_numbers)
+
+    init_db()
+    if chapter_numbers is not None:
+        nums = sorted(chapter_numbers)
+        print(f"Phạm vi chương: {nums[0]}-{nums[-1]} ({len(nums)} chương)")
+    else:
+        print(f"Giới hạn chương: {max_chapters or 'tất cả chương miễn phí'}")
+
+    metadata = adapter.fetch_metadata()
+    title = metadata.title
+    if not title and novel_id is None:
+        raise RuntimeError("Không đọc được tên truyện từ trang nguồn.")
+    print(f"Truyện: {metadata.title or '(giữ tên trong DB)'} (nguồn: {adapter.name})")
+    print(f"Tác giả: {metadata.author or '(không rõ)'}")
+
+    if novel_id is None:
+        novel_id = upsert_novel(
+            novel_url,
+            title,
+            metadata.author,
+            metadata.summary,
+            metadata.cover,
+        )
+    else:
+        existing_novel = get_novel_by_id(novel_id)
+        if not existing_novel:
+            raise RuntimeError(f"Không tìm thấy truyện id={novel_id} trong DB.")
+        title = existing_novel.title
+        print("Cào nối vào truyện đã có — giữ URL/tên gốc, gắn nguồn cho chương mới.")
+    _ctrl().on_novel(novel_id, title)
+
+    need_chapter_list = refresh_chapter_list or _needs_chapter_list_api(novel_id, required_numbers)
+    if need_chapter_list:
+        adapter_chapters, vip_count = adapter.fetch_chapter_list()
+        if not adapter_chapters:
+            raise RuntimeError("Không tìm thấy chương nào từ trang nguồn.")
+        print(f"Tìm thấy {len(adapter_chapters)} chương, bỏ qua {vip_count} chương VIP.")
+        existing_numbers = {ch.chapter_number for ch in get_chapters_for_novel(novel_id)}
+        for idx, ch in enumerate(adapter_chapters, start=1):
+            if idx not in existing_numbers:
+                ensure_chapter_record(novel_id, ch.site_id, idx, ch.title, adapter.name)
+        numbered = [(idx, ch) for idx, ch in enumerate(adapter_chapters, start=1)]
+    else:
+        db_chapters = get_chapters_for_novel(novel_id)
+        chapters = _chapters_from_db_http(adapter, db_chapters)
+        numbered = [(ch.chapter_number, info) for ch, info in zip(db_chapters, chapters)]
+        print(f"Dùng danh sách chương từ DB ({len(numbered)} chương), bỏ qua API.")
+
+    if max_chapters is not None and chapter_numbers is None:
+        numbered = numbered[:max_chapters]
+        print(f"Chỉ cào {len(numbered)} chương đầu (max_chapters={max_chapters}).")
+    if required_numbers is not None:
+        numbered = [item for item in numbered if item[0] in required_numbers]
+        if not numbered:
+            raise RuntimeError("Không có chương nào trong phạm vi đã chọn.")
+        print(f"Lọc {len(numbered)} chương trong phạm vi.")
+
+    number_by_site = {info.site_id: number for number, info in numbered}
+    if not number_by_site:
+        raise RuntimeError("Không có chương để cào.")
+
+    existing_chapters = get_chapters_for_novel(novel_id)
+    existing_by_site_id = {ch.chapter_site_id: ch for ch in existing_chapters}
+    existing_by_number = {ch.chapter_number: ch for ch in existing_chapters}
+    content_numbers = {ch.chapter_number for ch in existing_chapters if chapter_has_content(ch.content)}
+
+    work_items: list[tuple[int, ChapterInfo, object | None]] = [
+        (number_by_site[info.site_id], info, existing_by_site_id.get(info.site_id)) for _, info in numbered
+    ]
+
+    work_items = sort_chapters_for_crawl_keyed(work_items)
+    _ctrl().on_chapters_planned(
+        [
+            {
+                "chapter_number": number,
+                "chapter_site_id": ch.site_id,
+                "title": ch.title,
+                "chapter_id": getattr(existing, "id", None),
+            }
+            for number, ch, existing in work_items
+        ]
+    )
+
+    total = len(work_items)
+    skip_count = 0
+    failed_count = 0
+    chapters_saved = 0
+
+    for pos, (number, ch, existing) in enumerate(work_items, start=1):
+        _ctrl().checkpoint()
+        pct = _progress_pct(pos, total)
+        existing = existing_by_site_id.get(ch.site_id) or existing_by_number.get(number)
+        chapter_id = getattr(existing, "id", None)
+
+        already_here = bool(existing) and (
+            existing.crawl_status == STATUS_COMPLETED or chapter_has_content(existing.content)
+        )
+        if already_here or number in content_numbers:
+            skip_count += 1
+            _ctrl().on_chapter(number, "skipped", chapter_id, None)
+            print(f"\n[{pos}/{total}] ({pct}%) {ch.title} — đã có, skip")
+            continue
+
+        print(f"\n[{pos}/{total}] ({pct}%) {ch.title}")
+        print(f"  -> {ch.url}")
+        _ctrl().on_chapter(number, "running", chapter_id, None)
+
+        try:
+            content = adapter.fetch_chapter_content(ch)
+        except SourceError as exc:
+            failed_count += 1
+            print(f"  Lỗi: {exc}")
+            if existing:
+                update_crawl_status(existing.id, STATUS_FAILED)
+            _ctrl().on_chapter(number, "failed", chapter_id, str(exc)[:300])
+            continue
+        except Exception as exc:  # noqa: BLE001 - giữ job chạy tiếp với chương lỗi
+            failed_count += 1
+            print(f"  Lỗi không mong đợi: {exc}")
+            if existing:
+                update_crawl_status(existing.id, STATUS_FAILED)
+            _ctrl().on_chapter(number, "failed", chapter_id, str(exc)[:300])
+            continue
+
+        if not content:
+            failed_count += 1
+            print("  Bỏ qua: không có nội dung.")
+            if existing:
+                update_crawl_status(existing.id, STATUS_FAILED)
+            _ctrl().on_chapter(number, "failed", chapter_id, "Không có nội dung")
+            continue
+
+        saved_id = upsert_chapter_at_number(novel_id, number, ch.site_id, ch.title, content, adapter.name)
+        chapters_saved += 1
+        _ctrl().on_chapter(number, "completed", saved_id, None)
+        print(f"  Đã lưu ({len(content)} ký tự, nguồn {adapter.name})")
+
+        if pos < total:
+            _sleep_between_chapters(chapters_saved)
+
+    if skip_count:
+        print(f"\nĐã bỏ qua {skip_count}/{total} chương (đã có nội dung trong DB).")
+    if failed_count:
+        print(f"Lỗi {failed_count}/{total} chương.")
+    return novel_id
+
+
 def run_tts_only(
     novel_id: int | None = None,
     chapter_numbers: frozenset[int] | None = None,
@@ -1129,6 +1338,11 @@ def _write_crawl_error_log(exc: BaseException) -> Path:
 def preview_novel(novel_url: str) -> dict:
     """Đọc metadata bằng Playwright headless, rồi lưu truyện và các chương chưa có nội dung."""
     novel_url = _normalize_novel_url(novel_url)
+
+    adapter = create_source(novel_url)
+    if adapter is not None:
+        return _preview_novel_http(adapter, novel_url)
+
     if "sangtacviet.com" not in novel_url:
         raise ValueError("URL phải thuộc sangtacviet.com")
     _parse_novel_url(novel_url)
@@ -1189,6 +1403,41 @@ def preview_novel(novel_url: str) -> dict:
         "author": author,
         "summary": summary,
         "coverUrl": cover,
+        "chapterCount": len(chapters),
+        "vipCount": vip_count,
+    }
+
+
+def _preview_novel_http(adapter: NovelSource, novel_url: str) -> dict:
+    """Đọc metadata + danh sách chương bằng adapter HTTP (không mở trình duyệt)."""
+    try:
+        metadata = adapter.fetch_metadata()
+        if not metadata.title:
+            raise RuntimeError("Không đọc được tên truyện từ trang nguồn.")
+        chapters, vip_count = adapter.fetch_chapter_list()
+    finally:
+        adapter.close()
+
+    init_db()
+    novel_id = upsert_novel(
+        novel_url,
+        metadata.title,
+        metadata.author,
+        metadata.summary,
+        metadata.cover,
+    )
+    ensure_chapter_records(
+        novel_id,
+        [(chapter.site_id, index, chapter.title) for index, chapter in enumerate(chapters, start=1)],
+        adapter.name,
+    )
+    return {
+        "url": novel_url,
+        "novelId": novel_id,
+        "title": metadata.title,
+        "author": metadata.author,
+        "summary": metadata.summary,
+        "coverUrl": metadata.cover,
         "chapterCount": len(chapters),
         "vipCount": vip_count,
     }

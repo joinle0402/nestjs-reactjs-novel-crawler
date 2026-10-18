@@ -31,6 +31,8 @@ Use this map, then `search_graph` / `get_code_snippet` for the one symbol you wi
 - One active crawl at a time. Respect `crawl_worker.lock` and `crawl_runner.pid`.
 - Resume keeps the same job. `paused` returns to `running`. `cancelled`, `failed`, `completed`, and `completed_with_errors` go back to `pending` so the existing worker starts one runner. Chapters that already have content are skipped inside `_crawl_novel`.
 - Store extracted chapter text as read. Do not rewrite, summarize, or invent chapter content.
+- Sources: the URL host selects the adapter via `create_source` in `worker/sources/`. `sangtacviet.com` uses the Playwright path in `worker/crawler.py`; `wikicv.org|net` uses the HTTP adapter `worker/sources/wikicv.py` (`requests` + BeautifulSoup, no browser). `_normalize_novel_url` keeps the trailing slash for sangtacviet but strips it (and the `#fragment`) for wikicv. Both sides must keep matching `chapter_sign` (sha256 of the 81-rotated `signKey+start+size`) and `site_id` (chapter path) so resume-from-DB URLs match.
+- Multi-source per novel: one novel can hold chapters from several sources. `chapters.source` (default `sangtacviet`) tags each row. A crawl job may carry a URL from another source together with an existing `novelId`; `resolveTarget` keeps that novel and the adapter path writes by chapter number via `upsert_chapter_at_number` (join-by-number: a number that already has content is skipped, otherwise the same number row is updated). Chapter list, novel list stats (`lastCrawled`, `sourceStats`), and the crawl drawer (source picker) surface this.
 - Forbidden, captcha, and temporary server errors recover or wait inside `worker/crawler.py`. Do not drop those paths when adding a feature.
 - `browser_state.json` is gitignored session state. Do not commit it or print cookies.
 - Novel covers live in `novels.cover_image`: a source URL from a crawl/preview, or an uploaded filename under `worker/covers/`. `GET /novels/:id/cover` serves the file or proxies the source URL; upload via `POST /novels/:id/cover`; both upsert paths preserve an existing cover when the scrape returns none.
@@ -46,10 +48,12 @@ API surface on `CrawlController`: `lookup`, `preview`, `logs`, `current`, `list`
 | Per-job chapter plan and status | `replace_plan`, `set_chapter`, `claim_job` in `worker/crawl_jobs.py` |
 | Page navigation, forbidden, captcha | `_goto_chapter`, `_recover_from_forbidden`, `_wait_for_content_with_captcha` |
 | Chapter list or body selectors | `_get_chapter_list`, `_extract_chapter_content` |
-| URL normalization | `backend/src/crawl/novel-url.ts` and `_normalize_novel_url` |
+| URL normalization | `backend/src/crawl/novel-url.ts` (`normalizeNovelUrl`, `detectSourceKind`) and `_normalize_novel_url` |
+| Add or change a source adapter (HTTP crawl, chapter list, sign) | `worker/sources/` (`base.py`, `wikicv.py`), `fetchFreeChapterList` in `backend/src/novels/novel-chapters-sync.ts` |
 | Novel page preview (title, author, summary, cover, chapter count) | `preview_novel` in `worker/crawler.py`, `GET /crawl/preview` |
 | Sync chapter list without the worker (plain HTTP) | `fetchFreeChapterList` in `backend/src/novels/novel-chapters-sync.ts`, `POST /novels/:id/sync-chapters` |
 | Refresh scope planning (HTTP sync + crawl missing) | `resolveTarget` scope `refresh` in `backend/src/crawl/crawl.service.ts` |
+| Crawl a second source into an existing novel (join by chapter number) | `_crawl_novel_http` + `db.upsert_chapter_at_number` in `worker/crawler.py`/`worker/db.py`, `resolveTarget` in `backend/src/crawl/crawl.service.ts` |
 
 Tests matching `*.spec.ts` are excluded from the graph. Read those files directly when the change needs a test.
 
@@ -79,3 +83,5 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-10-18 — Preview/crawl read the cover (`#thumb-prop` / `og:image`) and save it to `novels.cover_image`; `POST/GET/DELETE /novels/:id/cover` store and serve uploaded covers from `worker/covers/`.
 - 2026-10-18 — Crawl job responses add `novelCoverImage` so the dashboard and crawler tables can show the same cover thumbnail as the novel list.
 - 2026-10-18 — Add `worker/scripts/sync_novel_covers.py` to backfill covers for existing novels (`--apply`, `--force`, `--novel-id`). Cover scraping accepts `#thumb-prop` only when the image actually loaded and skips the `bookcover256.jpg` placeholder, since some source CDNs are unreachable.
+- 2026-10-18 — Add source adapter layer (`worker/sources/`): wikicv.org|net crawls over plain HTTP (`requests` + bs4, no Playwright) for metadata, `/book/index` chapter list (sha256 sign), and `#bookContentBody` content. `create_source` dispatches by host; `_normalize_novel_url` is source-aware (wikicv strips `#fragment` + trailing slash). `detectSourceKind` added to `novel-url.ts`; `fetchFreeChapterList` branches to `fetchWikicvChapterList`.
+- 2026-10-18 — Multi-source per novel: `chapters.source` column, `upsert_chapter_at_number` join-by-number write, `resolveTarget` accepts a different-source URL with an existing `novelId`, and chapter list shows `source`, novel stats expose `lastCrawled`/`sourceStats`, crawl drawer has a source picker.

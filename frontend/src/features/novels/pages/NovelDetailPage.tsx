@@ -30,7 +30,8 @@ import {
     useUpdateChapterMutation,
 } from '@/features/chapters/hooks/useChapterMutations.ts';
 import { ChapterFormModal, type ChapterFormValues } from '@/features/chapters/components/ChapterFormModal.tsx';
-import type { ChapterListItem, ListChaptersParams } from '@/features/chapters/api/chaptersApi.ts';
+import type { ChapterListItem, ChapterSource, ListChaptersParams } from '@/features/chapters/api/chaptersApi.ts';
+import { CHAPTER_SOURCE_LABEL, chapterSourceColor } from '@/features/chapters/api/chaptersApi.ts';
 import { JobStatusTag } from '@/shared/ui/JobStatusTag.tsx';
 import { JOB_STATUS_OPTIONS, JobStatus, type JobStatus as JobStatusValue } from '@/shared/types/jobStatus.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
@@ -344,6 +345,16 @@ export function NovelDetailPage() {
             width: 80,
         },
         {
+            title: 'Nguồn',
+            dataIndex: 'source',
+            width: 110,
+            render: (source: ChapterSource) => (
+                <Tag color={chapterSourceColor(source)} style={{ marginInlineEnd: 0 }}>
+                    {CHAPTER_SOURCE_LABEL[source] ?? source}
+                </Tag>
+            ),
+        },
+        {
             title: 'Chương',
             dataIndex: 'title',
             ellipsis: true,
@@ -435,6 +446,8 @@ export function NovelDetailPage() {
 
     const novel = novelQuery.data;
     const stats = statsQuery.data;
+    const boundaryNumber = stats?.lastCrawled ?? null;
+    const totalChapters = stats?.total ?? 0;
     const missing = previewQuery.data?.missing ?? 0;
     const failed = previewQuery.data?.failed ?? 0;
     const selectedList = [...selectedChapters.values()];
@@ -648,6 +661,28 @@ export function NovelDetailPage() {
                     </StatPill>
                 </Space>
 
+                {boundaryNumber != null && totalChapters > boundaryNumber ? (
+                    <Alert
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: 12 }}
+                        message={`Cào dừng tại chương ${boundaryNumber}/${totalChapters}`}
+                        description="Chương phía trên đã có nội dung. Muốn cào tiếp từ nguồn khác, mở drawer cào và chọn nguồn WikiCV rồi dán URL truyện tương ứng."
+                        action={
+                            <Button
+                                size="small"
+                                type="primary"
+                                disabled={crawlActive}
+                                onClick={() =>
+                                    navigate(`/crawl?novelId=${novel.id}&chapterRange=${boundaryNumber + 1}-`)
+                                }
+                            >
+                                Cào tiếp
+                            </Button>
+                        }
+                    />
+                ) : null}
+
                 {jobHere && jobQuery.data ? (
                     <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
                         {jobQuery.data.progress.detail}
@@ -670,6 +705,11 @@ export function NovelDetailPage() {
                             columns={columns}
                             dataSource={chaptersQuery.data?.data}
                             loading={chaptersQuery.isFetching}
+                            rowClassName={(chapter) =>
+                                boundaryNumber != null && chapter.chapterNumber === boundaryNumber
+                                    ? 'chapter-boundary-row'
+                                    : ''
+                            }
                             rowSelection={{
                                 selectedRowKeys: [...selectedChapters.keys()],
                                 preserveSelectedRowKeys: true,

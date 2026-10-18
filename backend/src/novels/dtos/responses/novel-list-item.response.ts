@@ -8,6 +8,9 @@ export class NovelStatsCounts {
     @ApiProperty({ description: 'Số chương crawl_status = completed' })
     crawled!: number;
 
+    @ApiProperty({ description: 'Số chương cuối cùng đã có nội dung (điểm cào dừng)', nullable: true })
+    lastCrawled!: number | null;
+
     @ApiProperty({ description: 'Số chương tts_status = completed' })
     ttsDone!: number;
 
@@ -16,6 +19,17 @@ export class NovelStatsCounts {
 
     @ApiProperty()
     ttsFailed!: number;
+}
+
+export class NovelSourceStats {
+    @ApiProperty({ description: 'Tên nguồn đã cào, ví dụ sangtacviet hoặc wikicv' })
+    source!: string;
+
+    @ApiProperty({ description: 'Tổng số chương của nguồn này' })
+    total!: number;
+
+    @ApiProperty({ description: 'Số chương đã cào xong của nguồn này' })
+    crawled!: number;
 }
 
 export class NovelListItemResponse {
@@ -47,12 +61,16 @@ export class NovelListItemResponse {
 
     @ApiProperty({ type: NovelStatsCounts })
     stats!: NovelStatsCounts;
+
+    @ApiProperty({ type: [NovelSourceStats], description: 'Thống kê cào theo từng nguồn' })
+    sourceStats!: NovelSourceStats[];
 }
 
 export function toStatsCounts(
     raw?: {
         total?: string | number | null;
         crawled?: string | number | null;
+        lastCrawled?: string | number | null;
         ttsDone?: string | number | null;
         crawlFailed?: string | number | null;
         ttsFailed?: string | number | null;
@@ -61,6 +79,7 @@ export function toStatsCounts(
     return {
         total: Number(raw?.total ?? 0),
         crawled: Number(raw?.crawled ?? 0),
+        lastCrawled: raw?.lastCrawled == null ? null : Number(raw.lastCrawled),
         ttsDone: Number(raw?.ttsDone ?? 0),
         crawlFailed: Number(raw?.crawlFailed ?? 0),
         ttsFailed: Number(raw?.ttsFailed ?? 0),

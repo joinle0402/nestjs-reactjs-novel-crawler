@@ -1,12 +1,33 @@
 import { axiosClient } from '@/shared/api/axiosClient.ts';
 import type { JobStatus } from '@/shared/types/jobStatus.ts';
 
+export type ChapterSource = 'sangtacviet' | 'wikicv';
+
+export const CHAPTER_SOURCE_LABEL: Record<ChapterSource, string> = {
+    sangtacviet: 'SangTacViet',
+    wikicv: 'WikiCV',
+};
+
+export const CHAPTER_SOURCE_COLOR: Record<ChapterSource, string> = {
+    sangtacviet: 'geekblue',
+    wikicv: 'green',
+};
+
+export function chapterSourceLabel(source: string): string {
+    return CHAPTER_SOURCE_LABEL[source as ChapterSource] ?? source;
+}
+
+export function chapterSourceColor(source: string): string {
+    return CHAPTER_SOURCE_COLOR[source as ChapterSource] ?? 'default';
+}
+
 export type ChapterListItem = {
     id: number;
     novelId: number;
     chapterSiteId: string;
     chapterNumber: number;
     title: string;
+    source: ChapterSource;
     crawlStatus: JobStatus;
     ttsStatus: JobStatus;
     mp3Path: string | null;
@@ -31,6 +52,7 @@ export type ChapterDetail = {
     chapterNumber: number;
     title: string;
     content: string | null;
+    source: ChapterSource;
     mp3Path: string | null;
     hasMp3: boolean;
     hasBgm: boolean;
