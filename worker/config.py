@@ -42,6 +42,12 @@ DELAY_BETWEEN_CHAPTERS_MAX = 20
 # Nghỉ dài sau mỗi N chương đã cào thành công trong phiên
 CRAWL_BATCH_EVERY = 5
 CRAWL_BATCH_PAUSE_SEC = 180  # 3 phút
+# Riêng nguồn WikiDich/WikiCV (HTTP, không mở browser) — nhẹ hơn sangtacviet nên
+# nghỉ ngắn hơn nhưng vẫn random + nghỉ batch để tránh rate-limit của nguồn.
+WIKICV_DELAY_BETWEEN_CHAPTERS_MIN = 2
+WIKICV_DELAY_BETWEEN_CHAPTERS_MAX = 5
+WIKICV_CRAWL_BATCH_EVERY = 20
+WIKICV_CRAWL_BATCH_PAUSE_SEC = 60  # 1 phút
 # Chờ trước khi thử lại sau 403 (ban tạm có thể vài phút–vài giờ)
 CRAWL_403_COOLDOWN_SEC = 300  # 5 phút
 # True = luôn mở trang danh sách truyện trước; False = bỏ qua nếu DB đã có list chương

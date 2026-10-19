@@ -54,6 +54,10 @@ from config import (
     MAX_CONTENT_RELOADS,
     NOVEL_URL,
     SELECTORS,
+    WIKICV_CRAWL_BATCH_EVERY,
+    WIKICV_CRAWL_BATCH_PAUSE_SEC,
+    WIKICV_DELAY_BETWEEN_CHAPTERS_MAX,
+    WIKICV_DELAY_BETWEEN_CHAPTERS_MIN,
 )
 from db import (
     STATUS_COMPLETED,
@@ -407,25 +411,43 @@ def _goto_chapter(page: Page, context: BrowserContext, url: str) -> None:
         _recover_from_forbidden(page, context, url)
 
 
-def _sleep_between_chapters(chapters_saved: int) -> None:
-    """Delay ngẫu nhiên + nghỉ batch định kỳ."""
-    lo = min(DELAY_BETWEEN_CHAPTERS_MIN, DELAY_BETWEEN_CHAPTERS_MAX)
-    hi = max(DELAY_BETWEEN_CHAPTERS_MIN, DELAY_BETWEEN_CHAPTERS_MAX)
+def _rest_settings(source: str | None) -> tuple[float, float, int, float]:
+    """(delay_min, delay_max, batch_every, batch_pause) theo nguồn."""
+    if source == "wikicv":
+        return (
+            WIKICV_DELAY_BETWEEN_CHAPTERS_MIN,
+            WIKICV_DELAY_BETWEEN_CHAPTERS_MAX,
+            WIKICV_CRAWL_BATCH_EVERY,
+            WIKICV_CRAWL_BATCH_PAUSE_SEC,
+        )
+    return (
+        DELAY_BETWEEN_CHAPTERS_MIN,
+        DELAY_BETWEEN_CHAPTERS_MAX,
+        CRAWL_BATCH_EVERY,
+        CRAWL_BATCH_PAUSE_SEC,
+    )
+
+
+def _sleep_between_chapters(chapters_saved: int, source: str | None = None) -> None:
+    """Delay ngẫu nhiên + nghỉ batch định kỳ, dùng nhịp riêng của từng nguồn."""
+    delay_min, delay_max, batch_every, batch_pause = _rest_settings(source)
+    lo = min(delay_min, delay_max)
+    hi = max(delay_min, delay_max)
     delay = random.uniform(lo, hi)
     print(f"  Nghỉ {delay:.1f}s trước chương tiếp...")
     _ctrl().on_rest(delay, "chapter")
     _interruptible_sleep(delay)
     _ctrl().on_rest(0, "chapter")
     if (
-        CRAWL_BATCH_EVERY > 0
+        batch_every > 0
         and chapters_saved > 0
-        and chapters_saved % CRAWL_BATCH_EVERY == 0
+        and chapters_saved % batch_every == 0
     ):
         print(
-            f"  Nghỉ batch {CRAWL_BATCH_PAUSE_SEC}s sau {chapters_saved} chương đã cào..."
+            f"  Nghỉ batch {batch_pause}s sau {chapters_saved} chương đã cào..."
         )
-        _ctrl().on_rest(float(CRAWL_BATCH_PAUSE_SEC), "batch")
-        _interruptible_sleep(CRAWL_BATCH_PAUSE_SEC)
+        _ctrl().on_rest(float(batch_pause), "batch")
+        _interruptible_sleep(batch_pause)
         _ctrl().on_rest(0, "batch")
 
 
@@ -1044,7 +1066,7 @@ def _crawl_novel(
                 print(f"  Đã lưu ({len(content)} ký tự)")
 
                 if pos < total:
-                    _sleep_between_chapters(chapters_saved)
+                    _sleep_between_chapters(chapters_saved, "sangtacviet")
         except CrawlForbiddenError as exc:
             print(f"\n[LỖI 403] {exc}")
             print("Tiến độ đã lưu — chạy lại sau vài giờ hoặc dùng --chapter-range nhỏ hơn.")
@@ -1255,7 +1277,7 @@ def _crawl_novel_http(
         print(f"  Đã lưu ({len(content)} ký tự, nguồn {adapter.name})")
 
         if pos < total:
-            _sleep_between_chapters(chapters_saved)
+            _sleep_between_chapters(chapters_saved, adapter.name)
 
     if skip_count:
         print(f"\nĐã bỏ qua {skip_count}/{total} chương (đã có nội dung trong DB).")

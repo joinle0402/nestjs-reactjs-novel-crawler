@@ -474,10 +474,10 @@ export function NovelDetailPage() {
             return null;
         }
         if (missing > 0 && failed !== missing) {
-            return { label: `Tạo audio (${missing})`, disabled: false, request: { scope: 'missing' as const, chapterRange: '' } };
+            return { label: 'Tạo audio', disabled: false, request: { scope: 'missing' as const, chapterRange: '' } };
         }
         if (failed > 0) {
-            return { label: `Chạy lại lỗi (${failed})`, disabled: false, request: { scope: 'failed' as const, chapterRange: '' } };
+            return { label: 'Chạy lại lỗi', disabled: false, request: { scope: 'failed' as const, chapterRange: '' } };
         }
         return null;
     })();

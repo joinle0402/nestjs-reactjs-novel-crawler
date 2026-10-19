@@ -8,6 +8,7 @@ trên trang truyện.
 from __future__ import annotations
 
 import hashlib
+import random
 import re
 import time
 from urllib.parse import urljoin, urlparse
@@ -25,6 +26,21 @@ USER_AGENT = (
 )
 _MAX_RETRIES = 3
 _RETRY_BACKOFF_SEC = 2.0
+_MAX_RETRY_BACKOFF_SEC = 20.0
+
+
+def _retry_delay(response: requests.Response | None, attempt: int) -> float:
+    """Backoff có jitter; ưu tiên Retry-After khi nguồn trả 429/503."""
+    if response is not None:
+        retry_after = (response.headers.get("Retry-After") or "").strip()
+        if retry_after:
+            try:
+                return max(0.0, min(float(retry_after), 120.0))
+            except ValueError:
+                pass
+    base = _RETRY_BACKOFF_SEC * (2**attempt)
+    return min(_MAX_RETRY_BACKOFF_SEC, base * random.uniform(1.0, 1.5))
+
 
 _RE_BOOK_ID = re.compile(r'var bookId\s*=\s*"([^"]+)"')
 _RE_SIGN_KEY = re.compile(r'var signKey\s*=\s*"([^"]+)"')
@@ -71,6 +87,7 @@ class WikicvSource:
             headers["Referer"] = referer
         last_error: Exception | None = None
         for attempt in range(_MAX_RETRIES):
+            response: requests.Response | None = None
             try:
                 response = self._session.get(url, headers=headers, timeout=self._timeout)
             except requests.RequestException as exc:
@@ -84,7 +101,7 @@ class WikicvSource:
                 if response.status_code not in (403, 429, 500, 502, 503, 504):
                     break
             if attempt < _MAX_RETRIES - 1:
-                time.sleep(_RETRY_BACKOFF_SEC * (attempt + 1))
+                time.sleep(_retry_delay(response, attempt))
         raise SourceError(f"Không tải được {url}: {last_error}")
 
     # -------------------------------------------------------------- metadata
