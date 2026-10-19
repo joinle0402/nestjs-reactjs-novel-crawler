@@ -125,7 +125,7 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
                 <SoundOutlined className="bottom-player__icon" />
                 <div className="bottom-player__titles">
                     <Typography.Text strong ellipsis>
-                        <Link to={`/novels/${track.novelId}`}>{track.novelTitle}</Link>
+                        <Link to={`/novels/${track.novelId}?focusChapterId=${track.chapterId}`}>{track.novelTitle}</Link>
                     </Typography.Text>
                     <Typography.Text type="secondary" ellipsis>
                         <Link to={`/novels/${track.novelId}/chapters/${track.chapterId}`}>

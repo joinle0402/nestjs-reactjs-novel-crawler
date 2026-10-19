@@ -125,6 +125,7 @@ export function NovelDetailPage() {
 
     const page = Math.max(1, Number(searchParams.get('page') ?? 1) || 1);
     const limit = parsePageLimit(searchParams.get('limit'));
+    const focusChapterId = parseRouteId(searchParams.get('focusChapterId') ?? undefined);
     const q = searchParams.get('q') ?? '';
     const [titleQuery, setTitleQuery] = useState(q);
     const [trackedQ, setTrackedQ] = useState(q);
@@ -144,8 +145,9 @@ export function NovelDetailPage() {
             crawlStatus,
             ttsStatus,
             onDrive,
+            focusChapterId,
         }),
-        [page, limit, q, crawlStatus, ttsStatus, onDrive],
+        [page, limit, q, crawlStatus, ttsStatus, onDrive, focusChapterId],
     );
     const driveChecked = drivePreviewQuery.data?.driveChecked ?? false;
     const driveFolderId = drivePreviewQuery.data?.driveFolderId ?? null;
@@ -233,6 +235,7 @@ export function NovelDetailPage() {
                     next.delete('q');
                 }
                 next.delete('page');
+                next.delete('focusChapterId');
                 return next;
             });
         }, 300);
@@ -250,6 +253,9 @@ export function NovelDetailPage() {
         }
         if (!patch.page) {
             next.delete('page');
+        }
+        if (Object.keys(patch).some((key) => key !== 'limit')) {
+            next.delete('focusChapterId');
         }
         setSearchParams(next);
     };
@@ -681,12 +687,6 @@ export function NovelDetailPage() {
                             </Button>
                         }
                     />
-                ) : null}
-
-                {jobHere && jobQuery.data ? (
-                    <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-                        {jobQuery.data.progress.detail}
-                    </Typography.Paragraph>
                 ) : null}
 
                 {chaptersQuery.isError ? (
