@@ -667,7 +667,7 @@ export function NovelDetailPage() {
                         showIcon
                         style={{ marginBottom: 12 }}
                         message={`Cào dừng tại chương ${boundaryNumber}/${totalChapters}`}
-                        description="Chương phía trên đã có nội dung. Muốn cào tiếp từ nguồn khác, mở drawer cào và chọn nguồn WikiCV rồi dán URL truyện tương ứng."
+                        description="Chương phía trên đã có nội dung. Bấm Cào tiếp để lấy các chương còn lại từ chính nguồn này. Nguồn khác là một truyện riêng — tạo tác vụ cào với URL của nguồn đó."
                         action={
                             <Button
                                 size="small"

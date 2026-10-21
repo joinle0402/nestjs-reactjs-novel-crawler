@@ -1,4 +1,4 @@
-import { NovelUrlError, detectSourceKind, normalizeNovelUrl, parseNovelSource } from './novel-url';
+import { NovelUrlError, detectSourceKind, normalizeNovelUrl, parseNovelSource, sameNovelUrl } from './novel-url';
 
 describe('normalizeNovelUrl', () => {
     it('adds a trailing slash and accepts sangtacviet novel urls', () => {
@@ -23,6 +23,20 @@ describe('detectSourceKind', () => {
         expect(detectSourceKind('https://wikicv.org/truyen/abc-def-123')).toBe('wikicv');
         expect(detectSourceKind('https://www.wikicv.net/truyen/abc-def-123')).toBe('wikicv');
         expect(detectSourceKind('https://sangtacviet.com/truyen/qimao/1/9980688/')).toBe('sangtacviet');
+    });
+});
+
+describe('sameNovelUrl', () => {
+    it('treats slash and fragment variants as the same novel', () => {
+        const wikicv = 'https://wikicv.org/truyen/lich-su-phong-live-stream-tuy-co-sang-ch-aJWKhFS4CFLtYED4';
+        expect(sameNovelUrl(`${wikicv}/`, `${wikicv}#!`)).toBe(true);
+        expect(sameNovelUrl('https://sangtacviet.com/truyen/qimao/1/9980688', 'https://sangtacviet.com/truyen/qimao/1/9980688/')).toBe(true);
+    });
+
+    it('keeps different sources apart', () => {
+        expect(
+            sameNovelUrl('https://sangtacviet.com/truyen/qimao/1/9980688/', 'https://wikicv.org/truyen/abc-def-123'),
+        ).toBe(false);
     });
 });
 

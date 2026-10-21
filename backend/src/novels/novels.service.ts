@@ -9,7 +9,7 @@ import { UpdateNovelRequest } from './dtos/requests/update-novel.request';
 import { Chapter } from '../chapters/chapters.entity';
 import { PlaybackState } from './entities/playback-state.entity';
 import { NovelStatsResponse } from './dtos/responses/novel-stats.response';
-import { NovelListItemResponse, NovelSourceStats, NovelStatsCounts, toNovelStatsResponse, toStatsCounts } from './dtos/responses/novel-list-item.response';
+import { NovelListItemResponse, NovelStatsCounts, toNovelStatsResponse, toStatsCounts } from './dtos/responses/novel-list-item.response';
 import { UpdatePlaybackRequest } from './dtos/requests/update-playback.request';
 import { SyncNovelChaptersResponse } from './dtos/responses/sync-chapters.response';
 import { fetchFreeChapterList } from './novel-chapters-sync';
@@ -33,11 +33,7 @@ export class NovelsService {
             order: { id: 'DESC' },
         });
         const ids = novels.map((novel) => novel.id);
-        const [statsByNovelId, lastActivityByNovelId, sourceStatsByNovelId] = await Promise.all([
-            this.getStatsByNovelIds(ids),
-            this.getLastActivityByNovelIds(ids),
-            this.getSourceStatsByNovelIds(ids),
-        ]);
+        const [statsByNovelId, lastActivityByNovelId] = await Promise.all([this.getStatsByNovelIds(ids), this.getLastActivityByNovelIds(ids)]);
 
         return novels.map((novel) => ({
             id: novel.id,
@@ -49,7 +45,6 @@ export class NovelsService {
             createdAt: novel.createdAt,
             lastActivityAt: (lastActivityByNovelId.get(novel.id) ?? novel.createdAt).toISOString(),
             stats: statsByNovelId.get(novel.id) ?? toStatsCounts(),
-            sourceStats: sourceStatsByNovelId.get(novel.id) ?? [],
         }));
     }
 
@@ -144,11 +139,10 @@ export class NovelsService {
         return toNovelStatsResponse(novel.id, novel.title, statsByNovelId.get(id) ?? toStatsCounts());
     }
 
-    async syncChapters(id: number, urlOverride?: string): Promise<SyncNovelChaptersResponse> {
+    async syncChapters(id: number): Promise<SyncNovelChaptersResponse> {
         const novel = await this.findOne(id);
-        const sourceUrl = urlOverride?.trim() || novel.url;
-        const { chapters, vipCount } = await fetchFreeChapterList(sourceUrl);
-        const source = detectSourceKind(sourceUrl);
+        const { chapters, vipCount } = await fetchFreeChapterList(novel.url);
+        const source = detectSourceKind(novel.url);
 
         const existing = await this.chaptersRepository.find({
             where: { novelId: id },
@@ -214,43 +208,6 @@ export class NovelsService {
             statsByNovelId.set(Number(row.novelId), toStatsCounts(row));
         }
         return statsByNovelId;
-    }
-
-    private async getSourceStatsByNovelIds(ids: number[]): Promise<Map<number, NovelSourceStats[]>> {
-        const sourceStatsByNovelId = new Map<number, NovelSourceStats[]>();
-        if (ids.length === 0) {
-            return sourceStatsByNovelId;
-        }
-
-        const rows = await this.chaptersRepository
-            .createQueryBuilder('chapter')
-            .select('chapter.novel_id', 'novelId')
-            .addSelect('chapter.source', 'source')
-            .addSelect('COUNT(*)', 'total')
-            .addSelect('SUM(CASE WHEN chapter.crawl_status = :completed THEN 1 ELSE 0 END)', 'crawled')
-            .where('chapter.novel_id IN (:...ids)', { ids, completed: JobStatus.COMPLETED })
-            .groupBy('chapter.novel_id')
-            .addGroupBy('chapter.source')
-            .orderBy('chapter.novel_id', 'DESC')
-            .addOrderBy('chapter.source', 'ASC')
-            .getRawMany<{
-                novelId: string | number;
-                source: string | null;
-                total: string;
-                crawled: string | null;
-            }>();
-
-        for (const row of rows) {
-            const novelId = Number(row.novelId);
-            const list = sourceStatsByNovelId.get(novelId) ?? [];
-            list.push({
-                source: row.source || 'sangtacviet',
-                total: Number(row.total ?? 0),
-                crawled: Number(row.crawled ?? 0),
-            });
-            sourceStatsByNovelId.set(novelId, list);
-        }
-        return sourceStatsByNovelId;
     }
 
     private async getLastActivityByNovelIds(ids: number[]): Promise<Map<number, Date>> {

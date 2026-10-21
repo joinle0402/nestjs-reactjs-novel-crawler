@@ -73,7 +73,6 @@ from db import (
     init_db,
     update_crawl_status,
     upsert_chapter,
-    upsert_chapter_at_number,
     upsert_novel,
 )
 from sources import ChapterInfo, NovelSource, SourceError, create_source, is_wikicv
@@ -778,9 +777,13 @@ def _crawl_novel(
             raise ValueError(f"Không tìm thấy novel id={novel_id} trong DB.")
         db_url = _normalize_novel_url(novel.url)
         if novel_url:
-            # Cho phép URL nguồn khác (adapter HTTP) để cào nối vào truyện đã có.
-            if _normalize_novel_url(novel_url) != db_url and create_source(_normalize_novel_url(novel_url)) is None:
-                raise ValueError("URL không khớp với --novel-id.")
+            # Mỗi truyện chỉ thuộc một nguồn. URL nguồn khác phải tạo truyện mới,
+            # không cào nối vào truyện đã có.
+            if _normalize_novel_url(novel_url) != db_url:
+                raise ValueError(
+                    "URL không khớp với truyện đã có. Mỗi truyện chỉ cào từ một nguồn; "
+                    "tạo tác vụ mới cho URL của nguồn khác."
+                )
         else:
             novel_url = novel.url
 
@@ -1167,7 +1170,7 @@ def _crawl_novel_http(
         if not existing_novel:
             raise RuntimeError(f"Không tìm thấy truyện id={novel_id} trong DB.")
         title = existing_novel.title
-        print("Cào nối vào truyện đã có — giữ URL/tên gốc, gắn nguồn cho chương mới.")
+        print("Cập nhật truyện đã có — giữ URL/tên gốc.")
     _ctrl().on_novel(novel_id, title)
 
     need_chapter_list = refresh_chapter_list or _needs_chapter_list_api(novel_id, required_numbers)
@@ -1202,8 +1205,6 @@ def _crawl_novel_http(
 
     existing_chapters = get_chapters_for_novel(novel_id)
     existing_by_site_id = {ch.chapter_site_id: ch for ch in existing_chapters}
-    existing_by_number = {ch.chapter_number: ch for ch in existing_chapters}
-    content_numbers = {ch.chapter_number for ch in existing_chapters if chapter_has_content(ch.content)}
 
     work_items: list[tuple[int, ChapterInfo, object | None]] = [
         (number_by_site[info.site_id], info, existing_by_site_id.get(info.site_id)) for _, info in numbered
@@ -1230,13 +1231,12 @@ def _crawl_novel_http(
     for pos, (number, ch, existing) in enumerate(work_items, start=1):
         _ctrl().checkpoint()
         pct = _progress_pct(pos, total)
-        existing = existing_by_site_id.get(ch.site_id) or existing_by_number.get(number)
         chapter_id = getattr(existing, "id", None)
 
         already_here = bool(existing) and (
             existing.crawl_status == STATUS_COMPLETED or chapter_has_content(existing.content)
         )
-        if already_here or number in content_numbers:
+        if already_here:
             skip_count += 1
             _ctrl().on_chapter(number, "skipped", chapter_id, None)
             print(f"\n[{pos}/{total}] ({pct}%) {ch.title} — đã có, skip")
@@ -1271,7 +1271,7 @@ def _crawl_novel_http(
             _ctrl().on_chapter(number, "failed", chapter_id, "Không có nội dung")
             continue
 
-        saved_id = upsert_chapter_at_number(novel_id, number, ch.site_id, ch.title, content, adapter.name)
+        saved_id = upsert_chapter(novel_id, ch.site_id, number, ch.title, content, adapter.name)
         chapters_saved += 1
         _ctrl().on_chapter(number, "completed", saved_id, None)
         print(f"  Đã lưu ({len(content)} ký tự, nguồn {adapter.name})")

@@ -16,7 +16,7 @@ import { CreateCrawlJobRequest, ListCrawlChaptersQuery, ListCrawlJobsQuery } fro
 import { CrawlJobChapterResponse, CrawlJobListResponse, CrawlJobProgress, CrawlJobResponse, CrawlLookupResponse, CrawlPreviewResponse } from './dtos/responses/crawl.response';
 import { CrawlJobChapter } from './entities/crawl-job-chapter.entity';
 import { CRAWL_ACTIVE_STATUSES, CrawlJob, type CrawlJobStatus, type CrawlScope } from './entities/crawl-job.entity';
-import { NovelUrlError, normalizeNovelUrl } from './novel-url';
+import { NovelUrlError, normalizeNovelUrl, sameNovelUrl } from './novel-url';
 
 const CRAWL_JOB_LOCK = 'novel_crawler_crawl_job';
 const CRAWL_STOPPED_STATUSES: CrawlJobStatus[] = ['cancelled', 'failed', 'completed', 'completed_with_errors'];
@@ -71,7 +71,7 @@ export class CrawlService {
 
     async lookup(url: string): Promise<CrawlLookupResponse> {
         const normalized = this.normalize(url);
-        const novel = await this.novelsRepository.findOne({ where: { url: normalized } });
+        const novel = await this.findNovelByUrl(normalized);
         if (!novel) {
             return { url: normalized, novelId: null, title: null, total: 0, missing: 0, failed: 0 };
         }
@@ -298,13 +298,25 @@ export class CrawlService {
         throwUnless(request.url?.trim() || request.novelId, 'Nhập URL hoặc chọn truyện');
         let novelId = request.novelId ?? null;
         let url = request.url?.trim() ? this.normalize(request.url) : '';
-        if (novelId) {
+        if (url) {
+            // Mỗi URL nguồn là một truyện riêng. Resolve theo URL để không gắn URL
+            // của nguồn khác vào truyện đang có (không cào trộn nguồn).
+            const existing = await this.findNovelByUrl(url);
+            if (existing) {
+                novelId = existing.id;
+                url = existing.url;
+            } else if (novelId) {
+                const selected = await this.novelsService.findOne(novelId);
+                if (sameNovelUrl(selected.url, url)) {
+                    url = selected.url;
+                } else {
+                    // URL thuộc nguồn khác: để worker tạo truyện mới.
+                    novelId = null;
+                }
+            }
+        } else if (novelId) {
             const novel = await this.novelsService.findOne(novelId);
-            // URL khác novel.url = cào nối từ nguồn khác (ví dụ wikicv); giữ novelId đã chọn.
-            url = url || novel.url;
-        } else {
-            const existing = await this.novelsRepository.findOne({ where: { url } });
-            novelId = existing?.id ?? null;
+            url = novel.url;
         }
 
         const facts = novelId ? await this.loadFacts(novelId) : [];
@@ -328,7 +340,7 @@ export class CrawlService {
 
         if (request.scope === 'refresh') {
             throwUnless(novelId, 'Cần truyện đã có trong thư viện để cập nhật danh sách chương mới');
-            await this.novelsService.syncChapters(novelId, url);
+            await this.novelsService.syncChapters(novelId);
             const refreshedFacts = await this.loadFacts(novelId);
             const numbers = refreshedFacts.filter((fact) => !fact.hasContent).map((fact) => fact.chapterNumber);
             throwUnless(numbers.length > 0, 'Danh sách chương đã cập nhật, không có chương nào cần cào');
@@ -416,6 +428,17 @@ export class CrawlService {
             }
             await queryRunner.release();
         }
+    }
+
+    private async findNovelByUrl(url: string): Promise<Novel | null> {
+        const variants = new Set([url, url.endsWith('/') ? url.replace(/\/+$/, '') : `${url}/`]);
+        for (const variant of variants) {
+            const found = await this.novelsRepository.findOne({ where: { url: variant } });
+            if (found) {
+                return found;
+            }
+        }
+        return null;
     }
 
     private async transition(id: number, from: CrawlJobStatus[], to: CrawlJobStatus, finish: boolean): Promise<CrawlJobResponse> {

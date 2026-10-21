@@ -95,7 +95,6 @@ function draftFrom(job: CrawlJob, mode: 'edit' | 'clone'): CrawlTaskDraft {
     return {
         mode,
         jobId: mode === 'edit' ? job.id : undefined,
-        novelId: job.novelId ?? undefined,
         url: job.url,
         scope: job.scope,
         chapterRange: job.chapterRange ?? (job.scope === 'chapters' ? '' : ''),
@@ -182,7 +181,6 @@ export function CrawlPage() {
         }
         setDraft({
             mode: 'create',
-            novelId,
             url: novelQuery.data.url,
             scope: 'chapters' satisfies CrawlScope,
             chapterRange: chapterRangeParam,
@@ -200,7 +198,6 @@ export function CrawlPage() {
     const openCreate = () => {
         setDraft({
             mode: 'create',
-            novelId: novelQuery.data?.id,
             url: novelQuery.data?.url ?? '',
             scope: 'chapters',
             chapterRange: '',

@@ -9,12 +9,6 @@ export type NovelStatsCounts = {
     ttsFailed: number;
 };
 
-export type NovelSourceStats = {
-    source: string;
-    total: number;
-    crawled: number;
-};
-
 export type NovelListItem = {
     id: number;
     url: string;
@@ -25,7 +19,6 @@ export type NovelListItem = {
     createdAt: string;
     lastActivityAt: string;
     stats: NovelStatsCounts;
-    sourceStats: NovelSourceStats[];
 };
 
 export type Novel = {

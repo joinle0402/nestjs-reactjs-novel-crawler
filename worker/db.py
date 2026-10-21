@@ -386,57 +386,6 @@ def upsert_chapter(
         return chapter_id
 
 
-def upsert_chapter_at_number(
-    novel_id: int,
-    chapter_number: int,
-    chapter_site_id: str,
-    title: str,
-    content: str,
-    source: str = SOURCE_SANGTACVIET,
-) -> int:
-    """Ghi chương theo SỐ chương, dùng khi cào nối từ nguồn khác.
-
-    Nếu đã có record cùng số chương (kể cả từ nguồn khác) thì cập nhật tại chỗ
-    để tránh trùng số; ngược lại thì insert bình thường.
-    """
-    now = _now()
-    crawl_status = STATUS_COMPLETED if chapter_has_content(content) else STATUS_PENDING
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT id FROM chapters WHERE novel_id = ? AND chapter_number = ? ORDER BY id LIMIT 1",
-            (novel_id, chapter_number),
-        ).fetchone()
-        if row:
-            chapter_id = int(row["id"])
-            conn.execute(
-                """
-                UPDATE chapters
-                SET chapter_site_id = ?, title = ?, content = ?, source = ?,
-                    crawled_at = ?, crawl_status = ?
-                WHERE id = ?
-                """,
-                (chapter_site_id, title, content, source, now, crawl_status, chapter_id),
-            )
-        else:
-            conn.execute(
-                """
-                INSERT INTO chapters
-                    (novel_id, chapter_site_id, chapter_number, title, content,
-                     source, crawled_at, crawl_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (novel_id, chapter_site_id, chapter_number, title, content, source, now, crawl_status),
-            )
-            chapter_id = int(
-                conn.execute(
-                    "SELECT id FROM chapters WHERE novel_id = ? AND chapter_site_id = ?",
-                    (novel_id, chapter_site_id),
-                ).fetchone()["id"]
-            )
-        _sync_tts_chars_total_on_conn(conn, chapter_id, content)
-        return chapter_id
-
-
 def update_chapter_mp3(chapter_id: int, mp3_path: str, has_bgm: bool = False) -> None:
     with get_db() as conn:
         conn.execute(

@@ -48,3 +48,12 @@ export function normalizeNovelUrl(url: string): string {
     }
     return withSlash;
 }
+
+/** So sánh URL truyện sau khi chuẩn hoá; URL không thuộc nguồn hỗ trợ thì so sánh nguyên văn. */
+export function sameNovelUrl(left: string, right: string): boolean {
+    try {
+        return normalizeNovelUrl(left) === normalizeNovelUrl(right);
+    } catch {
+        return left.trim() === right.trim();
+    }
+}

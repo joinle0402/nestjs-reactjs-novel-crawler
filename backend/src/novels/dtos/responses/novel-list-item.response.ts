@@ -21,17 +21,6 @@ export class NovelStatsCounts {
     ttsFailed!: number;
 }
 
-export class NovelSourceStats {
-    @ApiProperty({ description: 'Tên nguồn đã cào, ví dụ sangtacviet hoặc wikicv' })
-    source!: string;
-
-    @ApiProperty({ description: 'Tổng số chương của nguồn này' })
-    total!: number;
-
-    @ApiProperty({ description: 'Số chương đã cào xong của nguồn này' })
-    crawled!: number;
-}
-
 export class NovelListItemResponse {
     @ApiProperty()
     id!: number;
@@ -61,9 +50,6 @@ export class NovelListItemResponse {
 
     @ApiProperty({ type: NovelStatsCounts })
     stats!: NovelStatsCounts;
-
-    @ApiProperty({ type: [NovelSourceStats], description: 'Thống kê cào theo từng nguồn' })
-    sourceStats!: NovelSourceStats[];
 }
 
 export function toStatsCounts(

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Empty, Image, Input, Modal, Progress, Select, Space, Table, Tag, Tooltip, Typography, message, theme } from 'antd';
+import { Alert, Button, Card, Empty, Image, Input, Modal, Progress, Select, Space, Table, Tooltip, Typography, message, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, LinkOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -14,7 +14,6 @@ import {
 } from '@/features/novels/hooks/useNovelMutations.ts';
 import { NovelFormDrawer, type NovelFormValues } from '@/features/novels/components/NovelFormDrawer.tsx';
 import type { NovelListItem } from '@/features/novels/api/novelsApi.ts';
-import { chapterSourceColor, chapterSourceLabel } from '@/features/chapters/api/chaptersApi.ts';
 import { DEFAULT_NOVEL_COVER, getNovelCoverUrl } from '@/features/novels/lib/novelCover.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 import { ListPagination } from '@/shared/ui/ListPagination.tsx';
@@ -390,20 +389,6 @@ export function NovelListPage() {
                         total={novel.stats.total}
                         runningColor={token.colorPrimary}
                     />
-                    {novel.sourceStats.length > 1 ? (
-                        <Space size={4} wrap>
-                            {novel.sourceStats.map((item) => (
-                                <Tooltip key={item.source} title={`${chapterSourceLabel(item.source)}: ${item.crawled}/${item.total} chương`}>
-                                    <Tag
-                                        color={chapterSourceColor(item.source)}
-                                        style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: '16px' }}
-                                    >
-                                        {chapterSourceLabel(item.source)} {item.crawled}
-                                    </Tag>
-                                </Tooltip>
-                            ))}
-                        </Space>
-                    ) : null}
                 </div>
             ),
         },
