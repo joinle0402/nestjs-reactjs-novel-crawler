@@ -223,6 +223,16 @@ export class DriveService {
         return this.toResponse(recent, novel.title);
     }
 
+    /** Dùng cho lịch tự động: đọc trạng thái một job cụ thể. */
+    async getById(id: number): Promise<DriveJobResponse | null> {
+        const job = await this.jobsRepository.findOneBy({ id });
+        if (!job) {
+            return null;
+        }
+        const novel = await this.novelsService.findOne(job.novelId).catch(() => null);
+        return this.toResponse(job, novel?.title ?? `Truyện #${job.novelId}`);
+    }
+
     async getLast(novelId: number): Promise<DriveJobResponse | null> {
         await this.novelsService.findOne(novelId);
         const last = await this.jobsRepository.findOne({

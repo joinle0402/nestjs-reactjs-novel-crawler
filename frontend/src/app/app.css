@@ -242,6 +242,32 @@ a {
     color: var(--sub-text);
 }
 
+.schedule-novel {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.schedule-novel .ant-image-img {
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--sub-bg);
+}
+
+.schedule-period,
+.schedule-status {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.schedule-period .ant-typography,
+.schedule-status .ant-tag {
+    align-self: flex-start;
+}
+
 .chapter-boundary-row > td {
     border-bottom: 2px dashed var(--sub-border) !important;
 }

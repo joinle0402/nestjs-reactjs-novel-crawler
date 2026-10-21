@@ -86,6 +86,16 @@ export class TtsService {
         return this.toResponse(saved, novel.title, facts);
     }
 
+    /** Dùng cho lịch tự động: đọc trạng thái một job cụ thể. */
+    async getById(id: number): Promise<TtsJobResponse | null> {
+        const job = await this.jobsRepository.findOneBy({ id });
+        if (!job) {
+            return null;
+        }
+        const novel = await this.novelsService.findOne(job.novelId).catch(() => null);
+        return this.toResponse(job, novel?.title ?? `Truyện #${job.novelId}`);
+    }
+
     async stop(): Promise<TtsJobResponse> {
         const active = await this.findActive();
         throwUnless(active, 'Không có job TTS đang chạy', HttpStatus.NOT_FOUND);

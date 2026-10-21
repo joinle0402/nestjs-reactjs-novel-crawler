@@ -19,6 +19,8 @@ import { CrawlJobChapter } from './crawl/entities/crawl-job-chapter.entity';
 import { DriveModule } from './drive/drive.module';
 import { DriveUploadJob } from './drive/entities/drive-upload-job.entity';
 import { BgmModule } from './bgm/bgm.module';
+import { SchedulesModule } from './schedules/schedules.module';
+import { CrawlSchedule } from './schedules/entities/schedule.entity';
 
 @Module({
     imports: [
@@ -40,7 +42,7 @@ import { BgmModule } from './bgm/bgm.module';
                     password: configService.get<string>('DB_PASSWORD'),
                     database: configService.get<string>('DB_DATABASE'),
                     charset: 'utf8mb4',
-                    entities: [Novel, Chapter, PlaybackState, TtsJob, CrawlJob, CrawlJobChapter, DriveUploadJob],
+                    entities: [Novel, Chapter, PlaybackState, TtsJob, CrawlJob, CrawlJobChapter, DriveUploadJob, CrawlSchedule],
                     synchronize: true,
                     logging: isDev,
                     logger: isDev ? new SqlQueryLogger() : undefined,
@@ -58,6 +60,7 @@ import { BgmModule } from './bgm/bgm.module';
         CrawlModule,
         DriveModule,
         BgmModule,
+        SchedulesModule,
     ],
     controllers: [AppController],
     providers: [AppService],

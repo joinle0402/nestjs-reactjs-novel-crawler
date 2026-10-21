@@ -6,6 +6,7 @@ import {
     CloudDownloadOutlined,
     CustomerServiceOutlined,
     DashboardOutlined,
+    FieldTimeOutlined,
     MoonOutlined,
     ReadOutlined,
     SettingOutlined,
@@ -49,13 +50,15 @@ export function MainLayout() {
         ? ['settings']
         : location.pathname.startsWith('/crawl')
           ? ['crawl']
-          : location.pathname.startsWith('/bgm')
-            ? ['bgm']
-            : location.pathname === '/' || location.pathname === '/dashboard'
-              ? ['dashboard']
-              : location.pathname.startsWith('/novels')
-                ? ['novels']
-                : [];
+          : location.pathname.startsWith('/schedules')
+            ? ['schedules']
+            : location.pathname.startsWith('/bgm')
+              ? ['bgm']
+              : location.pathname === '/' || location.pathname === '/dashboard'
+                ? ['dashboard']
+                : location.pathname.startsWith('/novels')
+                  ? ['novels']
+                  : [];
 
     const bgmOptions = [
         { value: BGM_OFF_VALUE, label: 'Không nhạc nền' },
@@ -130,6 +133,8 @@ export function MainLayout() {
                                 navigate('/settings');
                             } else if (key === 'crawl') {
                                 navigate('/crawl');
+                            } else if (key === 'schedules') {
+                                navigate('/schedules');
                             } else if (key === 'bgm') {
                                 navigate('/bgm');
                             }
@@ -165,6 +170,11 @@ export function MainLayout() {
                                         key: 'crawl',
                                         icon: <CloudDownloadOutlined />,
                                         label: 'Crawler',
+                                    },
+                                    {
+                                        key: 'schedules',
+                                        icon: <FieldTimeOutlined />,
+                                        label: 'Lịch tự động',
                                     },
                                     {
                                         key: 'bgm',

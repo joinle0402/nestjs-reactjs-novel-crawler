@@ -53,6 +53,7 @@ API surface on `CrawlController`: `lookup`, `preview`, `logs`, `current`, `list`
 | Novel page preview (title, author, summary, cover, chapter count) | `fetchNovelMetadata` in `backend/src/novels/novel-metadata.ts`, `NovelsService.preview`, `GET /crawl/preview` |
 | Sync chapter list without the worker (plain HTTP) | `fetchFreeChapterList` in `backend/src/novels/novel-chapters-sync.ts`, `POST /novels/:id/sync-chapters` (backfills a missing cover) |
 | Refresh scope planning (HTTP sync + crawl missing) | `resolveTarget` scope `refresh` in `backend/src/crawl/crawl.service.ts` |
+| Scheduled auto update (sync list → crawl new chapters → TTS → Drive) | `SchedulesService` tick in `backend/src/schedules/`, UI `frontend/src/features/schedules/` |
 
 Tests matching `*.spec.ts` are excluded from the graph. Read those files directly when the change needs a test.
 
@@ -88,3 +89,5 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-10-21 — Remove multi-source per novel: `resolveTarget` always resolves by URL (no cross-source `novelId`), `_crawl_novel` rejects a URL that differs from `novel.url`, `upsert_chapter_at_number` and `sourceStats`/source picker are gone. Each source URL creates its own novel.
 - 2026-10-21 — `preview` now scrapes metadata + cover + chapter list over plain HTTP (`fetchNovelMetadata` + `fetchFreeChapterList`) instead of spawning the Playwright worker; `syncChapters` backfills `novels.cover_image` when the source page still has no cover.
 - 2026-10-21 — wikicv chapter-list sign now reads the rotate offset from the page's `fuzzySign` (it changes per session) in both `novel-chapters-sync.ts` and `worker/sources/wikicv.py`; `requirements.txt` declares `requests` + `beautifulsoup4`.
+- 2026-10-21 — Add `schedules` module/table: a 15s tick syncs the chapter list, crawls only chapter numbers above the previous max, then chains TTS (`missing`) and Drive (`missing`). `runStage` persists the active step; `nextRunAt` is recomputed from `daysOfWeek` + `timeOfDay` in server time.
+- 2026-10-21 — Schedule crawl range is built in `backend/src/schedules/crawl-range.ts`: a single new chapter must be `N-N`, because `parseChapterRange` treats a lone `N` as `1..N`.

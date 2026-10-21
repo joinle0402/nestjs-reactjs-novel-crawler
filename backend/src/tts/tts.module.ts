@@ -13,5 +13,6 @@ import { TtsWorkerService } from './tts-worker.service';
     imports: [TypeOrmModule.forFeature([TtsJob, Chapter]), NovelsModule],
     controllers: [TtsController],
     providers: [TtsService, TtsSettingsService, TtsSampleService, TtsWorkerService],
+    exports: [TtsService],
 })
 export class TtsModule {}

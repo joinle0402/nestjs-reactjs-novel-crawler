@@ -13,5 +13,6 @@ import { CrawlJob } from './entities/crawl-job.entity';
     imports: [TypeOrmModule.forFeature([CrawlJob, CrawlJobChapter, Chapter, Novel]), NovelsModule],
     controllers: [CrawlController],
     providers: [CrawlService, CrawlWorkerService],
+    exports: [CrawlService],
 })
 export class CrawlModule {}
