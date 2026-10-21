@@ -260,6 +260,19 @@ export function NovelFormDrawer({ open, novel, confirmLoading, onCancel, onSubmi
                         </Button>
                     </Space.Compact>
                 </Form.Item>
+                {!isEdit && matchedPreview?.coverUrl ? (
+                    <Form.Item label="Ảnh bìa" extra="Lấy từ trang nguồn khi bấm Đọc trang.">
+                        <Image
+                            src={getNovelCoverUrl({ id: matchedPreview.novelId, coverImage: matchedPreview.coverUrl })}
+                            alt={matchedPreview.title}
+                            className="novel-cover-editor__preview"
+                            width={120}
+                            height={168}
+                            fallback={DEFAULT_NOVEL_COVER}
+                            preview={{ mask: 'Xem ảnh' }}
+                        />
+                    </Form.Item>
+                ) : null}
                 {matchedPreview ? (
                     <Alert
                         type="success"

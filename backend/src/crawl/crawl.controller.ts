@@ -17,7 +17,7 @@ export class CrawlController {
     }
 
     @Get('preview')
-    @ApiOperation({ summary: 'Đọc tiêu đề, tác giả, tóm tắt và số chương từ URL bằng Playwright headless' })
+    @ApiOperation({ summary: 'Đọc tiêu đề, tác giả, tóm tắt, ảnh bìa và số chương từ URL bằng HTTP thường' })
     @ApiOkResponse({ type: CrawlPreviewResponse })
     preview(@Query('url') url = ''): Promise<CrawlPreviewResponse> {
         return this.crawlService.preview(url);

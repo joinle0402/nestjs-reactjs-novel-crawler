@@ -44,15 +44,19 @@ def _retry_delay(response: requests.Response | None, attempt: int) -> float:
 
 _RE_BOOK_ID = re.compile(r'var bookId\s*=\s*"([^"]+)"')
 _RE_SIGN_KEY = re.compile(r'var signKey\s*=\s*"([^"]+)"')
+_RE_SIGN_ROTATE = re.compile(
+    r"function\s+fuzzySign\s*\(\s*text\s*\)\s*\{\s*return\s+text\.substring\((\d+)\)"
+)
+_DEFAULT_SIGN_ROTATE = 81
 
 
-def rotate81(text: str) -> str:
-    """Bản Python của ``fuzzySign`` phía client (xoay chuỗi quanh vị trí 81)."""
-    return text[81:] + text[:81]
+def rotate(text: str, size: int) -> str:
+    """Bản Python của ``fuzzySign`` phía client (xoay chuỗi quanh vị trí ``size``)."""
+    return text[size:] + text[:size]
 
 
-def chapter_sign(sign_key: str, start: int, size: int) -> str:
-    payload = rotate81(f"{sign_key}{start}{size}")
+def chapter_sign(sign_key: str, start: int, size: int, rotate_size: int = _DEFAULT_SIGN_ROTATE) -> str:
+    payload = rotate(f"{sign_key}{start}{size}", rotate_size)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -73,6 +77,7 @@ class WikicvSource:
         )
         self._book_id: str | None = None
         self._sign_key: str | None = None
+        self._sign_rotate = _DEFAULT_SIGN_ROTATE
         self._chapters: list[ChapterInfo] | None = None
         self._vip_count = 0
 
@@ -147,6 +152,9 @@ class WikicvSource:
             match = _RE_SIGN_KEY.search(html)
             if match:
                 self._sign_key = match.group(1)
+            rotate_match = _RE_SIGN_ROTATE.search(html)
+            if rotate_match:
+                self._sign_rotate = int(rotate_match.group(1))
 
     # ---------------------------------------------------------- chapter list
 
@@ -194,7 +202,7 @@ class WikicvSource:
 
     def _fetch_index_page(self, start: int) -> str:
         assert self._book_id and self._sign_key
-        sign = chapter_sign(self._sign_key, start, PAGE_SIZE)
+        sign = chapter_sign(self._sign_key, start, PAGE_SIZE, self._sign_rotate)
         url = (
             f"{self._base}/book/index"
             f"?bookId={self._book_id}&start={start}&size={PAGE_SIZE}"

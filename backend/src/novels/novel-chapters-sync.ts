@@ -1,6 +1,6 @@
 import { BadGatewayException } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { detectSourceKind, parseNovelSource } from 'src/crawl/novel-url';
+import { detectSourceKind, parseNovelSource } from '../crawl/novel-url';
 
 export type ChapterListEntry = {
     siteId: string;
@@ -18,6 +18,7 @@ const CHAPTER_FREE_STATUS = '1';
 const REQUEST_TIMEOUT_MS = 30_000;
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 const WIKICV_PAGE_SIZE = 501;
+const WIKICV_DEFAULT_ROTATE = 81;
 
 type ChapterListPayload = {
     code?: unknown;
@@ -136,6 +137,8 @@ async function fetchWikicvChapterList(novelUrl: string): Promise<FreeChapterList
     const novelHtml = await fetchWikicvHtml(novelUrl, novelUrl);
     const bookId = matchOrThrow(novelHtml, /var bookId\s*=\s*"([^"]+)"/, 'bookId');
     const signKey = matchOrThrow(novelHtml, /var signKey\s*=\s*"([^"]+)"/, 'signKey');
+    // Trang đổi độ xoay của fuzzySign mỗi phiên; đọc đúng giá trị thay vì hardcode.
+    const rotateSize = wikicvRotateSize(novelHtml);
 
     const chapters: ChapterListEntry[] = [];
     const seen = new Set<string>();
@@ -149,7 +152,7 @@ async function fetchWikicvChapterList(novelUrl: string): Promise<FreeChapterList
         }
         visited.add(start);
 
-        const sign = wikicvChapterSign(signKey, start, WIKICV_PAGE_SIZE);
+        const sign = wikicvChapterSign(signKey, start, WIKICV_PAGE_SIZE, rotateSize);
         const apiUrl = `${base}/book/index?bookId=${encodeURIComponent(bookId)}` + `&start=${start}&size=${WIKICV_PAGE_SIZE}` + `&signKey=${encodeURIComponent(signKey)}&sign=${sign}`;
         const html = await fetchWikicvHtml(apiUrl, novelUrl);
 
@@ -205,9 +208,15 @@ async function fetchWikicvHtml(url: string, referer: string): Promise<string> {
     return response.text();
 }
 
-function wikicvChapterSign(signKey: string, start: number, size: number): string {
+function wikicvRotateSize(html: string): number {
+    const match = /function\s+fuzzySign\s*\(\s*text\s*\)\s*\{\s*return\s+text\.substring\((\d+)\)/i.exec(html);
+    const size = match ? Number(match[1]) : Number.NaN;
+    return Number.isInteger(size) && size >= 0 ? size : WIKICV_DEFAULT_ROTATE;
+}
+
+function wikicvChapterSign(signKey: string, start: number, size: number, rotateSize: number): string {
     const raw = `${signKey}${start}${size}`;
-    const rotated = raw.length > 81 ? raw.slice(81) + raw.slice(0, 81) : raw;
+    const rotated = raw.length > rotateSize ? raw.slice(rotateSize) + raw.slice(0, rotateSize) : raw;
     return createHash('sha256').update(rotated, 'utf8').digest('hex');
 }
 

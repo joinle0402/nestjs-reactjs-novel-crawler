@@ -11,7 +11,6 @@ import { Novel } from 'src/novels/entities/novel.entity';
 import { NovelsService } from 'src/novels/novels.service';
 import { ChapterRangeParseError, formatChapterList, parseChapterRange } from 'src/tts/chapter-range';
 import { resolveWorkerDir } from 'src/tts/tts-settings.service';
-import { readNovelPreview } from './crawl-preview';
 import { CreateCrawlJobRequest, ListCrawlChaptersQuery, ListCrawlJobsQuery } from './dtos/requests/crawl.request';
 import { CrawlJobChapterResponse, CrawlJobListResponse, CrawlJobProgress, CrawlJobResponse, CrawlLookupResponse, CrawlPreviewResponse } from './dtos/responses/crawl.response';
 import { CrawlJobChapter } from './entities/crawl-job-chapter.entity';
@@ -63,7 +62,7 @@ export class CrawlService {
         }
         this.previewing = true;
         try {
-            return await readNovelPreview(normalized);
+            return await this.novelsService.preview(normalized);
         } finally {
             this.previewing = false;
         }

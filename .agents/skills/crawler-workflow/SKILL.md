@@ -31,13 +31,13 @@ Use this map, then `search_graph` / `get_code_snippet` for the one symbol you wi
 - One active crawl at a time. Respect `crawl_worker.lock` and `crawl_runner.pid`.
 - Resume keeps the same job. `paused` returns to `running`. `cancelled`, `failed`, `completed`, and `completed_with_errors` go back to `pending` so the existing worker starts one runner. Chapters that already have content are skipped inside `_crawl_novel`.
 - Store extracted chapter text as read. Do not rewrite, summarize, or invent chapter content.
-- Sources: the URL host selects the adapter via `create_source` in `worker/sources/`. `sangtacviet.com` uses the Playwright path in `worker/crawler.py`; `wikicv.org|net` uses the HTTP adapter `worker/sources/wikicv.py` (`requests` + BeautifulSoup, no browser). `_normalize_novel_url` keeps the trailing slash for sangtacviet but strips it (and the `#fragment`) for wikicv. Both sides must keep matching `chapter_sign` (sha256 of the 81-rotated `signKey+start+size`) and `site_id` (chapter path) so resume-from-DB URLs match.
+- Sources: the URL host selects the adapter via `create_source` in `worker/sources/`. `sangtacviet.com` uses the Playwright path in `worker/crawler.py`; `wikicv.org|net` uses the HTTP adapter `worker/sources/wikicv.py` (`requests` + BeautifulSoup, no browser). `_normalize_novel_url` keeps the trailing slash for sangtacviet but strips it (and the `#fragment`) for wikicv. Both sides must keep matching `chapter_sign` (sha256 of `signKey+start+size` rotated by the page's current `fuzzySign` offset) and `site_id` (chapter path) so resume-from-DB URLs match.
 - One novel = one source. `resolveTarget` always resolves the novel from the URL, so a URL of another source never attaches to an existing novel; `_crawl_novel` rejects a URL that differs from the stored `novel.url`. Each source URL becomes its own novel, and the crawl drawer has no source picker because the URL host selects the adapter. `chapters.source` tags each row for display only.
 - Forbidden, captcha, and temporary server errors recover or wait inside `worker/crawler.py`. Do not drop those paths when adding a feature.
 - `browser_state.json` is gitignored session state. Do not commit it or print cookies.
 - Novel covers live in `novels.cover_image`: a source URL from a crawl/preview, or an uploaded filename under `worker/covers/`. `GET /novels/:id/cover` serves the file or proxies the source URL; upload via `POST /novels/:id/cover`; both upsert paths preserve an existing cover when the scrape returns none.
 
-API surface on `CrawlController`: `lookup`, `preview`, `logs`, `current`, `list`, `create`, `getOne`, `update`, `remove`, `chapters`, `pause`, `resume`, `continueManual`, `cancel`, `retry`. `preview` reads title, author, summary, cover image, and the free chapter list with Playwright `headless=True`, upserts the novel, and inserts chapter rows that do not exist yet. It does not write chapter text or the browser session.
+API surface on `CrawlController`: `lookup`, `preview`, `logs`, `current`, `list`, `create`, `getOne`, `update`, `remove`, `chapters`, `pause`, `resume`, `continueManual`, `cancel`, `retry`. `preview` reads title, author, summary, cover image, and the free chapter list over plain HTTP (no Playwright), upserts the novel, and inserts chapter rows that do not exist yet. It does not write chapter text or the browser session.
 
 ## Where to look
 
@@ -50,8 +50,8 @@ API surface on `CrawlController`: `lookup`, `preview`, `logs`, `current`, `list`
 | Chapter list or body selectors | `_get_chapter_list`, `_extract_chapter_content` |
 | URL normalization | `backend/src/crawl/novel-url.ts` (`normalizeNovelUrl`, `detectSourceKind`) and `_normalize_novel_url` |
 | Add or change a source adapter (HTTP crawl, chapter list, sign) | `worker/sources/` (`base.py`, `wikicv.py`), `fetchFreeChapterList` in `backend/src/novels/novel-chapters-sync.ts` |
-| Novel page preview (title, author, summary, cover, chapter count) | `preview_novel` in `worker/crawler.py`, `GET /crawl/preview` |
-| Sync chapter list without the worker (plain HTTP) | `fetchFreeChapterList` in `backend/src/novels/novel-chapters-sync.ts`, `POST /novels/:id/sync-chapters` |
+| Novel page preview (title, author, summary, cover, chapter count) | `fetchNovelMetadata` in `backend/src/novels/novel-metadata.ts`, `NovelsService.preview`, `GET /crawl/preview` |
+| Sync chapter list without the worker (plain HTTP) | `fetchFreeChapterList` in `backend/src/novels/novel-chapters-sync.ts`, `POST /novels/:id/sync-chapters` (backfills a missing cover) |
 | Refresh scope planning (HTTP sync + crawl missing) | `resolveTarget` scope `refresh` in `backend/src/crawl/crawl.service.ts` |
 
 Tests matching `*.spec.ts` are excluded from the graph. Read those files directly when the change needs a test.
@@ -86,3 +86,5 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-10-18 — Multi-source per novel: `chapters.source` column, `upsert_chapter_at_number` join-by-number write, `resolveTarget` accepts a different-source URL with an existing `novelId`, and chapter list shows `source`, novel stats expose `lastCrawled`/`sourceStats`, crawl drawer has a source picker.
 - 2026-10-19 — Per-source crawl rest: `WIKICV_*` delay/batch settings in `worker/config.py` are selected by `_rest_settings` in `crawler.py` (wikicv 2–5s/chapter, 60s per 20); wikicv HTTP retries now honor `Retry-After` with jittered backoff.
 - 2026-10-21 — Remove multi-source per novel: `resolveTarget` always resolves by URL (no cross-source `novelId`), `_crawl_novel` rejects a URL that differs from `novel.url`, `upsert_chapter_at_number` and `sourceStats`/source picker are gone. Each source URL creates its own novel.
+- 2026-10-21 — `preview` now scrapes metadata + cover + chapter list over plain HTTP (`fetchNovelMetadata` + `fetchFreeChapterList`) instead of spawning the Playwright worker; `syncChapters` backfills `novels.cover_image` when the source page still has no cover.
+- 2026-10-21 — wikicv chapter-list sign now reads the rotate offset from the page's `fuzzySign` (it changes per session) in both `novel-chapters-sync.ts` and `worker/sources/wikicv.py`; `requirements.txt` declares `requests` + `beautifulsoup4`.

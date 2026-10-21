@@ -6,13 +6,15 @@ import { throwUnless } from '../common/utils/throw-if';
 import { Novel } from './entities/novel.entity';
 import { CreateNovelRequest } from './dtos/requests/create-novel.request';
 import { UpdateNovelRequest } from './dtos/requests/update-novel.request';
-import { Chapter } from '../chapters/chapters.entity';
+import { Chapter, type ChapterSource } from '../chapters/chapters.entity';
 import { PlaybackState } from './entities/playback-state.entity';
 import { NovelStatsResponse } from './dtos/responses/novel-stats.response';
 import { NovelListItemResponse, NovelStatsCounts, toNovelStatsResponse, toStatsCounts } from './dtos/responses/novel-list-item.response';
 import { UpdatePlaybackRequest } from './dtos/requests/update-playback.request';
 import { SyncNovelChaptersResponse } from './dtos/responses/sync-chapters.response';
-import { fetchFreeChapterList } from './novel-chapters-sync';
+import { fetchFreeChapterList, type ChapterListEntry } from './novel-chapters-sync';
+import { fetchNovelMetadata } from './novel-metadata';
+import type { CrawlPreviewResponse } from '../crawl/dtos/responses/crawl.response';
 import { detectSourceKind } from '../crawl/novel-url';
 import { isRemoteCover, removeStoredCover, resolveStoredCover, saveUploadedCover, type UploadedCover } from './novel-cover';
 import { JobStatus } from '../common/enums/job-status.enum';
@@ -87,6 +89,40 @@ export class NovelsService {
         return saved;
     }
 
+    /**
+     * Đọc trang truyện bằng HTTP thường (không Playwright), lưu metadata + ảnh bìa
+     * và thêm các chương còn thiếu vào thư viện. Dùng cho nút "Đọc trang".
+     */
+    async preview(url: string): Promise<CrawlPreviewResponse> {
+        const metadata = await fetchNovelMetadata(url);
+        const { chapters, vipCount } = await fetchFreeChapterList(url);
+
+        const withSlash = url.endsWith('/') ? url : `${url}/`;
+        const candidates = [...new Set([url, withSlash])];
+        const existing = await this.novelsRepository.findOne({ where: candidates.map((candidate) => ({ url: candidate })) });
+        const model = existing ?? this.novelsRepository.create({ url, title: metadata.title });
+        model.title = metadata.title;
+        model.author = metadata.author || null;
+        model.summary = metadata.summary || null;
+        if (!model.coverImage?.trim() && metadata.cover) {
+            model.coverImage = metadata.cover;
+        }
+        const saved = await this.novelsRepository.save(model);
+
+        await this.insertMissingChapters(saved.id, chapters, detectSourceKind(url));
+
+        return {
+            url: saved.url,
+            novelId: saved.id,
+            title: saved.title,
+            author: saved.author ?? '',
+            summary: saved.summary ?? '',
+            coverUrl: saved.coverImage ?? '',
+            chapterCount: chapters.length,
+            vipCount,
+        };
+    }
+
     async uploadCover(id: number, file: UploadedCover | undefined): Promise<Novel> {
         const model = await this.findOne(id);
         const previous = model.coverImage;
@@ -144,8 +180,19 @@ export class NovelsService {
         const { chapters, vipCount } = await fetchFreeChapterList(novel.url);
         const source = detectSourceKind(novel.url);
 
+        const synced = await this.insertMissingChapters(id, chapters, source);
+        await this.ensureCover(novel);
+
+        return { synced, total: chapters.length, vipCount };
+    }
+
+    private async insertMissingChapters(novelId: number, chapters: ChapterListEntry[], source: ChapterSource): Promise<number> {
+        if (chapters.length === 0) {
+            return 0;
+        }
+
         const existing = await this.chaptersRepository.find({
-            where: { novelId: id },
+            where: { novelId },
             select: { chapterSiteId: true },
         });
         const existingSiteIds = new Set(existing.map((chapter) => chapter.chapterSiteId));
@@ -159,7 +206,7 @@ export class NovelsService {
                 .into(Chapter)
                 .values(
                     missing.map((chapter) => ({
-                        novelId: id,
+                        novelId,
                         chapterSiteId: chapter.siteId,
                         source,
                         chapterNumber: chapter.number,
@@ -170,7 +217,24 @@ export class NovelsService {
                 .execute();
         }
 
-        return { synced: missing.length, total: chapters.length, vipCount };
+        return missing.length;
+    }
+
+    /** Cào ảnh bìa khi truyện còn thiếu; lỗi ảnh không được làm hỏng việc đồng bộ chương. */
+    private async ensureCover(novel: Novel): Promise<void> {
+        if (novel.coverImage?.trim()) {
+            return;
+        }
+        try {
+            const metadata = await fetchNovelMetadata(novel.url);
+            if (!metadata.cover) {
+                return;
+            }
+            novel.coverImage = metadata.cover;
+            await this.novelsRepository.save(novel);
+        } catch {
+            return;
+        }
     }
 
     private async getStatsByNovelIds(ids: number[]): Promise<Map<number, NovelStatsCounts>> {
