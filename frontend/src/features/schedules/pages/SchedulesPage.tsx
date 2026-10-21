@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Card, Empty, Image, Modal, Space, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
@@ -97,6 +97,29 @@ export function SchedulesPage() {
     const updateMutation = useUpdateScheduleMutation();
     const deleteMutation = useDeleteScheduleMutation();
     const runMutation = useRunScheduleNowMutation();
+    /** Lịch do người dùng bấm "Chạy ngay"; báo kết quả khi lần chạy đó kết thúc. */
+    const watchedRunsRef = useRef<Set<number>>(new Set());
+
+    useEffect(() => {
+        const schedules = schedulesQuery.data;
+        if (!schedules || watchedRunsRef.current.size === 0) {
+            return;
+        }
+        for (const schedule of schedules) {
+            if (!watchedRunsRef.current.has(schedule.id) || !schedule.lastStatus || schedule.lastStatus === 'running') {
+                continue;
+            }
+            watchedRunsRef.current.delete(schedule.id);
+            const detail = schedule.lastMessage ?? 'không có chi tiết';
+            if (schedule.lastStatus === 'failed') {
+                message.error({ content: `Lịch "${schedule.novelTitle}" lỗi: ${detail}`, duration: 8 });
+            } else if (schedule.lastStatus === 'completed') {
+                message.success({ content: `Lịch "${schedule.novelTitle}": ${detail}`, duration: 6 });
+            } else {
+                message.info({ content: `Lịch "${schedule.novelTitle}": ${detail}`, duration: 6 });
+            }
+        }
+    }, [schedulesQuery.data]);
 
     const rows = useMemo(() => schedulesQuery.data ?? [], [schedulesQuery.data]);
     const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
@@ -128,7 +151,10 @@ export function SchedulesPage() {
 
     const runNow = (schedule: Schedule) => {
         runMutation.mutate(schedule.id, {
-            onSuccess: () => message.success('Đã chạy lịch. Theo dõi tiến độ trong cột Lần chạy.'),
+            onSuccess: () => {
+                watchedRunsRef.current.add(schedule.id);
+                message.success('Đã bắt đầu chạy lịch. Theo dõi tiến độ trong cột Lần chạy.');
+            },
             onError: (error) => message.error(getErrorMessage(error, 'Không chạy được lịch')),
         });
     };

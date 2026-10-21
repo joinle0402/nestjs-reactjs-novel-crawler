@@ -60,6 +60,10 @@ export class CrawlSchedule {
     @Column({ name: 'last_new_chapters', type: 'int', nullable: true })
     lastNewChapters!: number | null;
 
+    /** Số lần đã tự chạy lại sau lỗi đồng bộ chương; reset về 0 khi đồng bộ thành công. */
+    @Column({ name: 'retry_count', type: 'int', default: 0 })
+    retryCount!: number;
+
     @Column({ name: 'crawl_job_id', type: 'int', nullable: true })
     crawlJobId!: number | null;
 

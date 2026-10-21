@@ -16,6 +16,10 @@ const HOMEPAGE_URL = 'https://sangtacviet.com/';
 const CHAPTER_LIST_API = 'https://sangtacviet.com/index.php?ngmar=chapterlist&h={h}&bookid={bookid}&sajax=getchapterlist';
 const CHAPTER_FREE_STATUS = '1';
 const REQUEST_TIMEOUT_MS = 30_000;
+/** Trang nguồn hay trả 502/503 nhất thời; thử lại vài lần trước khi báo lỗi. */
+const RETRY_DELAYS_MS = [1_500, 4_000];
+const REQUEST_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
+const RETRYABLE_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 const WIKICV_PAGE_SIZE = 501;
 const WIKICV_DEFAULT_ROTATE = 81;
@@ -39,7 +43,7 @@ export async function fetchFreeChapterList(novelUrl: string): Promise<FreeChapte
 
     const response = await request(apiUrl, { cookie, referer: novelUrl });
     if (!response.ok) {
-        throw new BadGatewayException(`Trang nguồn trả HTTP ${response.status}. Thử lại sau.`);
+        throw new BadGatewayException(`Trang nguồn trả HTTP ${response.status} sau ${REQUEST_ATTEMPTS} lần thử. Thử lại sau.`);
     }
 
     const body = (await response.text()).trim();
@@ -64,7 +68,7 @@ export async function fetchFreeChapterList(novelUrl: string): Promise<FreeChapte
 async function openSession(): Promise<string> {
     const response = await request(HOMEPAGE_URL, { referer: HOMEPAGE_URL });
     if (!response.ok) {
-        throw new BadGatewayException(`Không mở được trang nguồn (HTTP ${response.status}).`);
+        throw new BadGatewayException(`Không mở được trang nguồn (HTTP ${response.status} sau ${REQUEST_ATTEMPTS} lần thử).`);
     }
     await response.text();
     return collectCookies(response);
@@ -80,12 +84,33 @@ async function request(url: string, init: { cookie?: string; referer: string }):
     if (init.cookie) {
         headers.cookie = init.cookie;
     }
-    try {
-        return await fetch(url, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new BadGatewayException(`Không kết nối được trang nguồn: ${message}`);
+    return fetchWithRetry(url, { headers });
+}
+
+/** fetch kèm thử lại cho lỗi mạng và 5xx/429 — trang nguồn thường 502 trong vài giây. */
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+    let lastFailure = '';
+    for (let attempt = 0; attempt < REQUEST_ATTEMPTS; attempt += 1) {
+        if (attempt > 0) {
+            await delay(RETRY_DELAYS_MS[attempt - 1]);
+        }
+        let response: Response;
+        try {
+            response = await fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+        } catch (error) {
+            lastFailure = `Không kết nối được trang nguồn: ${error instanceof Error ? error.message : String(error)}`;
+            continue;
+        }
+        if (!RETRYABLE_HTTP_STATUSES.has(response.status) || attempt === REQUEST_ATTEMPTS - 1) {
+            return response;
+        }
+        lastFailure = `Trang nguồn trả HTTP ${response.status}.`;
     }
+    throw new BadGatewayException(`${lastFailure} Đã thử ${REQUEST_ATTEMPTS} lần, thử lại sau.`);
+}
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function collectCookies(response: Response): string {
@@ -187,23 +212,16 @@ async function fetchWikicvChapterList(novelUrl: string): Promise<FreeChapterList
 }
 
 async function fetchWikicvHtml(url: string, referer: string): Promise<string> {
-    let response: Response;
-    try {
-        response = await fetch(url, {
-            headers: {
-                'user-agent': USER_AGENT,
-                accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'accept-language': 'vi,en;q=0.9',
-                referer,
-            },
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new BadGatewayException(`Không kết nối được trang nguồn: ${message}`);
-    }
+    const response = await fetchWithRetry(url, {
+        headers: {
+            'user-agent': USER_AGENT,
+            accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'accept-language': 'vi,en;q=0.9',
+            referer,
+        },
+    });
     if (!response.ok) {
-        throw new BadGatewayException(`Trang nguồn trả HTTP ${response.status}. Thử lại sau.`);
+        throw new BadGatewayException(`Trang nguồn trả HTTP ${response.status} sau ${REQUEST_ATTEMPTS} lần thử. Thử lại sau.`);
     }
     return response.text();
 }

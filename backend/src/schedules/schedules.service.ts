@@ -15,6 +15,9 @@ import { CrawlSchedule, type ScheduleLastStatus } from './entities/schedule.enti
 import { computeNextRun, isValidTimeOfDay, normalizeDaysOfWeek } from './schedule-time';
 
 const TICK_MS = 15_000;
+/** Lịch chạy theo giờ tự thử lại sau lỗi đồng bộ (trang nguồn 502/503 nhất thời). */
+const SYNC_RETRY_DELAY_MS = 15 * 60_000;
+const MAX_SYNC_RETRIES = 3;
 
 @Injectable()
 export class SchedulesService implements OnModuleInit, OnModuleDestroy {
@@ -121,6 +124,10 @@ export class SchedulesService implements OnModuleInit, OnModuleDestroy {
         }
 
         const scheduleChanged = request.daysOfWeek != null || request.timeOfDay != null || request.active != null;
+        if (scheduleChanged) {
+            // Người dùng đổi lịch thì cấp lại lượt tự chạy lại.
+            schedule.retryCount = 0;
+        }
         if (!schedule.active) {
             schedule.nextRunAt = null;
         } else if (scheduleChanged || !schedule.nextRunAt) {
@@ -139,12 +146,17 @@ export class SchedulesService implements OnModuleInit, OnModuleDestroy {
         return { ok: true };
     }
 
-    /** Chạy ngay một lần, không đổi lịch kế tiếp. */
+    /**
+     * Chạy ngay một lần, không đổi lịch kế tiếp.
+     * Chỉ giữ chỗ rồi trả về; phần đồng bộ trang nguồn chạy nền để request không bị timeout/502 ở proxy.
+     */
     async runNow(id: number): Promise<ScheduleResponse> {
         const schedule = await this.schedulesRepository.findOne({ where: { id }, relations: { novel: true } });
         throwUnless(schedule, 'Không tìm thấy lịch định kỳ', HttpStatus.NOT_FOUND);
         throwIf(schedule.runStage !== 'idle', 'Lịch đang chạy. Đợi xong rồi chạy lại.', HttpStatus.CONFLICT);
-        await this.beginRun(schedule);
+        const started = await this.claim(schedule.id);
+        throwIf(!started, 'Lịch đang chạy. Đợi xong rồi chạy lại.', HttpStatus.CONFLICT);
+        this.executeInBackground(schedule, false);
         const saved = await this.schedulesRepository.findOne({ where: { id }, relations: { novel: true } });
         throwUnless(saved, 'Không tìm thấy lịch định kỳ', HttpStatus.NOT_FOUND);
         return this.toResponse(saved);
@@ -213,12 +225,20 @@ export class SchedulesService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
-     * Bắt đầu một lần chạy: đồng bộ danh sách chương, rồi quyết định cào / TTS / Drive.
+     * Bắt đầu một lần chạy: giữ chỗ, rồi đồng bộ danh sách chương và quyết định cào / TTS / Drive.
      * Claim bằng update có điều kiện runStage='idle' để tick và "chạy ngay" không chạy trùng.
      */
     private async beginRun(schedule: CrawlSchedule): Promise<void> {
+        if (!(await this.claim(schedule.id))) {
+            return;
+        }
+        this.executeInBackground(schedule, true);
+    }
+
+    /** Giữ chỗ một lần chạy; trả false khi lịch vừa được tiến trình khác claim. */
+    private async claim(id: number): Promise<boolean> {
         const claimed = await this.schedulesRepository.update(
-            { id: schedule.id, runStage: 'idle' },
+            { id, runStage: 'idle' },
             {
                 runStage: 'sync',
                 lastStatus: 'running',
@@ -230,15 +250,22 @@ export class SchedulesService implements OnModuleInit, OnModuleDestroy {
                 driveJobId: null,
             },
         );
-        if (!claimed.affected) {
-            return;
-        }
+        return Boolean(claimed.affected);
+    }
 
+    private executeInBackground(schedule: CrawlSchedule, retryOnFailure: boolean): void {
+        void this.executeRun(schedule, retryOnFailure).catch((error) => {
+            this.logger.error(`Lịch #${schedule.id} lỗi ngoài dự kiến: ${errorMessage(error)}`);
+        });
+    }
+
+    private async executeRun(schedule: CrawlSchedule, retryOnFailure: boolean): Promise<void> {
         try {
             const previousMaxChapter = await this.maxChapterNumber(schedule.novelId);
             const sync = await this.novelsService.syncChapters(schedule.novelId);
             const newChapters = sync.synced;
-            await this.schedulesRepository.update(schedule.id, { lastNewChapters: newChapters });
+            schedule.retryCount = 0;
+            await this.schedulesRepository.update(schedule.id, { lastNewChapters: newChapters, retryCount: 0 });
 
             if (!schedule.autoCrawl) {
                 await this.finish(schedule.id, 'skipped', `Đã cập nhật danh sách chương (+${newChapters}). Tự động cào đang tắt.`);
@@ -272,8 +299,35 @@ export class SchedulesService implements OnModuleInit, OnModuleDestroy {
             // Không có chương mới cần cào: vẫn xử lý phần còn thiếu để lần chạy trước lỗi có thể tự phục hồi.
             await this.continueAfterCrawl(schedule, newChapters);
         } catch (error) {
-            await this.finish(schedule.id, 'failed', errorMessage(error));
+            await this.failRun(schedule, retryOnFailure, error);
         }
+    }
+
+    /**
+     * Ghi lỗi của lần chạy. Lịch chạy theo giờ (không phải "chạy ngay") được hẹn thử lại
+     * sau 15 phút, tối đa {@link MAX_SYNC_RETRIES} lần, để một cơn 502 ngắn không mất luôn lịch trong ngày.
+     */
+    private async failRun(schedule: CrawlSchedule, retryOnFailure: boolean, error: unknown): Promise<void> {
+        const message = errorMessage(error);
+        if (!retryOnFailure || schedule.retryCount >= MAX_SYNC_RETRIES) {
+            await this.schedulesRepository.update(schedule.id, {
+                runStage: 'idle',
+                lastStatus: 'failed',
+                lastMessage: message,
+                retryCount: 0,
+            });
+            return;
+        }
+
+        const attempt = schedule.retryCount + 1;
+        const retryAt = new Date(Date.now() + SYNC_RETRY_DELAY_MS);
+        await this.schedulesRepository.update(schedule.id, {
+            runStage: 'idle',
+            lastStatus: 'failed',
+            lastMessage: `${message} Sẽ tự chạy lại lúc ${formatClock(retryAt)} (lần ${attempt}/${MAX_SYNC_RETRIES}).`,
+            nextRunAt: retryAt,
+            retryCount: attempt,
+        });
     }
 
     private async maxChapterNumber(novelId: number): Promise<number> {
@@ -299,7 +353,7 @@ export class SchedulesService implements OnModuleInit, OnModuleDestroy {
 
     private async advance(schedule: CrawlSchedule): Promise<void> {
         if (schedule.runStage === 'sync') {
-            // Đang đồng bộ danh sách chương (beginRun đang chờ HTTP). Nếu quá lâu thì coi như treo.
+            // Đang đồng bộ danh sách chương ở nền. Nếu quá lâu (hoặc backend restart giữa chừng) thì coi như treo.
             const startedAt = schedule.lastRunAt ? new Date(schedule.lastRunAt).getTime() : 0;
             if (startedAt > 0 && Date.now() - startedAt > 10 * 60_000) {
                 await this.finish(schedule.id, 'failed', 'Đồng bộ danh sách chương quá lâu');
@@ -475,6 +529,10 @@ export class SchedulesService implements OnModuleInit, OnModuleDestroy {
             createdAt: schedule.createdAt,
         };
     }
+}
+
+function formatClock(date: Date): string {
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 function errorMessage(error: unknown): string {
