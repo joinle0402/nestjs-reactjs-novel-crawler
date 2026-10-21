@@ -3,3 +3,4 @@ worker/tmp/
 worker/bgm/
 worker/*.lock
 worker/*.pid
+worker/.runtime/

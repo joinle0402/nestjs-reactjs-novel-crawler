@@ -136,7 +136,9 @@ def _interrupt_pid(pid: int) -> None:
         return
     if sys.platform == "win32":
         try:
-            subprocess.run(["taskkill", "/PID", str(pid), "/T"], capture_output=True)
+            # Không dùng /T: engine TTS chạy detached nhưng vẫn là con của runner,
+            # tree-kill sẽ giết luôn process model đã nạp (mất phần "giữ engine ấm").
+            subprocess.run(["taskkill", "/PID", str(pid)], capture_output=True)
         except Exception:
             pass
     else:
@@ -150,7 +152,7 @@ def _interrupt_pid(pid: int) -> None:
         time.sleep(0.5)
     if sys.platform == "win32":
         try:
-            subprocess.run(["taskkill", "/F", "/PID", str(pid), "/T"], capture_output=True)
+            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
         except Exception:
             pass
     else:

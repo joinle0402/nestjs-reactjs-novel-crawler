@@ -12,6 +12,7 @@ export type TtsSettings = {
     voice: string;
     rate: string;
     bgmEnabled: boolean;
+    engineIdleMinutes: number;
 };
 
 const DEFAULTS: TtsSettings = {
@@ -19,6 +20,7 @@ const DEFAULTS: TtsSettings = {
     voice: 'vi-VN-HoaiMyNeural',
     rate: '+50%',
     bgmEnabled: true,
+    engineIdleMinutes: 0,
 };
 
 const ENGINE_LABELS: Record<TtsEngine, string> = {
@@ -66,6 +68,7 @@ export class TtsSettingsService {
             voice: request.voice,
             rate: request.rate,
             bgmEnabled: request.bgmEnabled,
+            engineIdleMinutes: request.engineIdleMinutes,
         };
         await this.write(next);
         return {
@@ -106,7 +109,9 @@ export class TtsSettingsService {
         const voice = typeof record.voice === 'string' && record.voice.trim() ? record.voice.trim() : DEFAULTS.voice;
         const rate = typeof record.rate === 'string' && record.rate.trim() ? record.rate.trim() : DEFAULTS.rate;
         const bgmEnabled = typeof record.bgmEnabled === 'boolean' ? record.bgmEnabled : DEFAULTS.bgmEnabled;
-        return { engine, voice, rate, bgmEnabled };
+        const idleRaw = typeof record.engineIdleMinutes === 'number' ? record.engineIdleMinutes : DEFAULTS.engineIdleMinutes;
+        const engineIdleMinutes = Number.isFinite(idleRaw) ? Math.min(1440, Math.max(0, Math.trunc(idleRaw))) : DEFAULTS.engineIdleMinutes;
+        return { engine, voice, rate, bgmEnabled, engineIdleMinutes };
     }
 
     private async write(settings: TtsSettings): Promise<void> {

@@ -7,6 +7,15 @@ import { getErrorMessage } from '@/shared/api/errorMessage.ts';
 
 const DEFAULT_SAMPLE = 'Xin chào. Đây là đoạn thử giọng đọc. Nếu bạn nghe rõ câu này, giọng đã chọn đang hoạt động.';
 
+const IDLE_OPTIONS = [
+    { value: 0, label: 'Không tự tắt (giữ engine ấm)' },
+    { value: 5, label: '5 phút' },
+    { value: 10, label: '10 phút' },
+    { value: 15, label: '15 phút' },
+    { value: 30, label: '30 phút' },
+    { value: 60, label: '1 giờ' },
+];
+
 async function sampleErrorMessage(error: unknown): Promise<string> {
     if (error instanceof Blob) {
         try {
@@ -23,6 +32,7 @@ type SettingsForm = {
     voice: string;
     rate: string;
     bgmEnabled: boolean;
+    engineIdleMinutes: number;
 };
 
 export function TtsSettingsPage() {
@@ -45,6 +55,7 @@ export function TtsSettingsPage() {
             voice: settingsQuery.data.voice,
             rate: settingsQuery.data.rate,
             bgmEnabled: settingsQuery.data.bgmEnabled,
+            engineIdleMinutes: settingsQuery.data.engineIdleMinutes,
         });
     }, [form, settingsQuery.data]);
 
@@ -70,6 +81,7 @@ export function TtsSettingsPage() {
                 voice: values.voice,
                 rate: values.rate.trim(),
                 bgmEnabled: Boolean(values.bgmEnabled),
+                engineIdleMinutes: Number(values.engineIdleMinutes ?? 0),
             },
             {
                 onSuccess: () => message.success('Đã lưu cài đặt TTS'),
@@ -216,6 +228,13 @@ export function TtsSettingsPage() {
                         extra="Bật: nhạc nền được trộn thẳng vào MP3 khi tạo (chương được đánh dấu đã có nhạc, trình nghe sẽ không chồng thêm). Tắt: MP3 chỉ có giọng đọc, chọn nhạc khi nghe hoặc lúc upload Drive."
                     >
                         <Switch />
+                    </Form.Item>
+                    <Form.Item
+                        name="engineIdleMinutes"
+                        label="Giữ engine trong bộ nhớ"
+                        extra="Áp dụng cho VieNeu/ZeroTTS: engine nạp model một lần rồi dùng lại cho các lần TTS, nghe thử và crawl sau đó. 0 = không tự tắt; engine chỉ dừng khi tắt máy hoặc chạy worker/stop_engines.py."
+                    >
+                        <Select options={IDLE_OPTIONS} />
                     </Form.Item>
                     <Form.Item
                         label="Thử giọng"

@@ -17,7 +17,7 @@ Use this map, then `search_graph` / `get_code_snippet` for the one symbol you wi
 
 1. UI: `frontend/src/features/tts/` — `TtsSettingsPage`, `TtsRunModal`, `ttsApi`, `useTtsQueries`.
 2. API: `TtsController` → `TtsService`, `TtsSettingsService`, `TtsSampleService` (`backend/src/tts/`).
-3. Process: `TtsWorkerService` starts `worker/tts_worker.py`, which runs `worker/tts_job_runner.py`.
+3. Process: `TtsWorkerService` starts `worker/tts_worker.py`, which runs `worker/tts_job_runner.py`. Offline engines are served by a long-lived broker (`worker/tts_engine_server.py`) so the model is loaded once per session.
 4. Audio: `generate_mp3_for_novel` in `worker/tts.py`.
 5. Job rows: `worker/tts_jobs.py`. Chapter MP3 path: `worker/db.py`.
 
@@ -28,6 +28,7 @@ Crawl may call TTS when `run_tts=True`. Crawl job rules live in the `crawler-wor
 - Scopes: `missing`, `failed`, `chapters` (`TTS_SCOPES`).
 - Job statuses: `pending`, `running`, `stopped`, `completed`, `failed` (`TTS_JOB_STATUSES`).
 - Engines: `edge-tts` (default), `vieneu`, and `zerotts` (`TTS_ENGINES`). Voice lists stay in `voicesForEngine` in `backend/src/tts/entities/tts-job.entity.ts`. Do not copy the voice list into this skill.
+- Offline engines run in a detached, long-lived `worker/tts_engine_server.py`, discovered through `worker/.runtime/engine-<engine>.json` (pid/port/token/fingerprint) by `worker/engine_client.py`. The process is reused across jobs, previews and crawl, so a new job does not reload the model. `close_vieneu()` / `close_zerotts()` only drop in-flight sockets; they do not stop the engine. Idle shutdown follows `engineIdleMinutes` in `tts_settings.json` (0 = never, env `TTS_ENGINE_IDLE_MINUTES` wins); default 0. `worker/stop_engines.py` stops them manually. Engine code, env (`VIENEU_BACKEND`, model id, HF cache) or clone voices changing the fingerprint forces a reload.
 - One active TTS worker at a time. Respect `tts_worker.lock`.
 - Skip chapters that already have a valid MP3, and chapters with no content.
 - `_normalize_tts_text` only strips tags, URLs, control characters, emoji, and known junk. Do not rewrite, summarize, or paraphrase the story.
@@ -51,6 +52,7 @@ API surface on `TtsController`: `getSettings`, `updateSettings`, `savedSample`, 
 | Per-chapter synthesis and chunks | `_tts_chapter`, `_tts_chapter_content`; edge-tts `_split_text_into_chunks`; VieNeu `_split_vieneu_chunks` |
 | VieNeu process | `worker/tts_vieneu.py` |
 | ZeroTTS process | `worker/tts_zerotts.py` |
+| Engine warm process, idle TTL, fingerprint | `worker/engine_client.py`, `worker/tts_engine_server.py`, `worker/stop_engines.py` |
 | Chapter range parsing | `backend/src/tts/chapter-range.ts` and `worker/chapter_range.py` |
 | Background music library | `backend/src/bgm/`, `worker/bgm_library.py`; playback in `AudioPlayerContext` |
 
@@ -81,3 +83,4 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-10-17 — Chapter `has_bgm` flag added (`chapters.has_bgm`, API `hasBgm`); player defaults BGM off for MP3s already mixed with music; BGM selector gains explicit "Không nhạc nền" option while default stays the first library track.
 - 2026-10-17 — TTS generation mixes BGM into the chapter MP3 again when `bgmEnabled` is on (settings + per-job `bgm_enabled`) and sets `has_bgm` from the mix result; `bgmEnabled` toggle restored in TTS settings UI.
 - 2026-10-17 — Added `zerotts` engine (ZeroTTS, ONNX CPU): own `.venv-zerotts` + `tts_zerotts.py` process, shares the VieNeu sentence chunking and `VIENEU_CHUNK_*`/pause invariants; rate % ignored like VieNeu.
+- 2026-10-21 — Offline engines now live in a detached broker (`tts_engine_server.py`) reused across jobs/previews/crawl; added `engineIdleMinutes` setting (0 = never) and `worker/stop_engines.py`.

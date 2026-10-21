@@ -161,7 +161,7 @@ export class TtsSampleService {
             where: [{ status: 'pending' }, { status: 'running' }],
         });
         const label = engine === 'zerotts' ? 'ZeroTTS' : 'VieNeu';
-        throwIf(active, `Đang tạo audio. Nghe thử ${label} sau khi job xong để tránh tải model hai lần.`);
+        throwIf(active, `Đang tạo audio. Nghe thử ${label} sau khi job xong để không phải chờ engine.`);
     }
 
     private async runPython(engine: string, voice: string, rate: string, text: string, output: string): Promise<void> {

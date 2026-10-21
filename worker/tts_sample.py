@@ -17,8 +17,6 @@ for _stream in (sys.stdout, sys.stderr):
         _reconfigure(encoding="utf-8", errors="replace")
 
 from tts import synthesize_clip
-from tts_vieneu_client import close_vieneu
-from tts_zerotts_client import close_zerotts
 from log_utils import log_message
 
 # Đổi câu thì sửa cả TTS_SAVED_SAMPLE_TEXT trong tts-sample.service.ts.
@@ -69,20 +67,16 @@ def _write_one(engine: str, voice: str, rate: str) -> None:
 
 def fill_cache(engine: str | None = None) -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        if not engine or engine == "edge-tts":
-            for voice in _voice_ids("EDGE_TTS_VOICES"):
-                for rate in _EDGE_RATES:
-                    _write_one("edge-tts", voice, rate)
-        if not engine or engine == "vieneu":
-            for voice in _voice_ids("VIENEU_VOICES"):
-                _write_one("vieneu", voice, "+0%")
-        if not engine or engine == "zerotts":
-            for voice in _voice_ids("ZEROTTS_VOICES"):
-                _write_one("zerotts", voice, "+0%")
-    finally:
-        close_vieneu()
-        close_zerotts()
+    if not engine or engine == "edge-tts":
+        for voice in _voice_ids("EDGE_TTS_VOICES"):
+            for rate in _EDGE_RATES:
+                _write_one("edge-tts", voice, rate)
+    if not engine or engine == "vieneu":
+        for voice in _voice_ids("VIENEU_VOICES"):
+            _write_one("vieneu", voice, "+0%")
+    if not engine or engine == "zerotts":
+        for voice in _voice_ids("ZEROTTS_VOICES"):
+            _write_one("zerotts", voice, "+0%")
 
 
 def main() -> None:
@@ -100,11 +94,7 @@ def main() -> None:
     if not all([args.engine, args.voice, args.rate, args.text, args.output]):
         raise SystemExit("Thiếu --engine --voice --rate --text --output")
     output = Path(args.output)
-    try:
-        synthesize_clip(args.text, output, engine=args.engine, voice=args.voice, rate=args.rate)
-    finally:
-        close_vieneu()
-        close_zerotts()
+    synthesize_clip(args.text, output, engine=args.engine, voice=args.voice, rate=args.rate)
     if not output.is_file() or output.stat().st_size == 0:
         raise SystemExit("Không tạo được file âm thanh")
 

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsString, Matches, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { TTS_ENGINES } from '../../entities/tts-job.entity';
 
 export class UpdateTtsSettingsRequest {
@@ -19,4 +19,11 @@ export class UpdateTtsSettingsRequest {
     @IsBoolean()
     @ApiProperty()
     bgmEnabled!: boolean;
+
+    /** 0 = không tự tắt engine offline. */
+    @IsInt()
+    @Min(0)
+    @Max(1440)
+    @ApiProperty({ example: 10, description: 'Số phút giữ engine offline ấm sau lần dùng cuối; 0 = không tự tắt' })
+    engineIdleMinutes!: number;
 }

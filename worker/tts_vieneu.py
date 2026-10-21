@@ -104,7 +104,7 @@ def _is_vieneu_cached() -> bool:
     return snapshots.is_dir() and any(snapshots.iterdir())
 
 
-def _load_engine():
+def load_engine():
     if "HF_HUB_OFFLINE" not in os.environ and _is_vieneu_cached():
         os.environ["HF_HUB_OFFLINE"] = "1"
 
@@ -147,7 +147,11 @@ def _wav_to_mp3(wav_path: Path, output_path: Path) -> None:
         raise RuntimeError(f"ffmpeg không xuất được MP3: {tail}")
 
 
-def _synthesize(engine, request: dict) -> None:
+def list_voices(engine) -> list:
+    return list(engine.list_preset_voices())
+
+
+def synthesize(engine, request: dict) -> None:
     text = str(request.get("text") or "").strip()
     voice = str(request.get("voice") or "").strip()
     output = str(request.get("output") or "").strip()
@@ -180,14 +184,14 @@ def main() -> int:
     _configure_stdio()
     protocol = _open_protocol()
     try:
-        engine = _load_engine()
+        engine = load_engine()
     except Exception as exc:
         _emit(protocol, {"ready": False, "error": f"{type(exc).__name__}: {exc}"})
         return 1
 
     voices: list = []
     try:
-        voices = list(engine.list_preset_voices())
+        voices = list_voices(engine)
     except Exception as exc:
         print(f"không liệt kê được giọng: {exc}", file=sys.stderr, flush=True)
     _emit(protocol, {"ready": True, "voices": voices})
@@ -200,7 +204,7 @@ def main() -> int:
             request = json.loads(raw)
             if not isinstance(request, dict):
                 raise ValueError("Yêu cầu không phải object JSON")
-            _synthesize(engine, request)
+            synthesize(engine, request)
             _emit(protocol, {"ok": True})
         except Exception as exc:
             _emit(protocol, {"ok": False, "error": f"{type(exc).__name__}: {exc}"})

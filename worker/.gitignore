@@ -12,6 +12,7 @@ crawl_worker.lock
 crawl_runner.pid
 drive_worker.lock
 drive_runner.pid
+.runtime/
 novels.db
 *.db
 browser_state.json

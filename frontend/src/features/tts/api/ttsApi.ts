@@ -20,6 +20,7 @@ export type TtsSettings = {
     voice: string;
     rate: string;
     bgmEnabled: boolean;
+    engineIdleMinutes: number;
     voices: TtsVoiceOption[];
     engines: TtsEngineOption[];
 };
@@ -29,6 +30,7 @@ export type UpdateTtsSettingsBody = {
     voice: string;
     rate: string;
     bgmEnabled: boolean;
+    engineIdleMinutes: number;
 };
 
 export type TtsSampleBody = {

@@ -92,12 +92,14 @@ _TTS_SETTING_DEFAULTS = {
     "voice": "vi-VN-HoaiMyNeural",
     "rate": "+50%",
     "bgmEnabled": True,
+    # Giữ engine offline (VieNeu/ZeroTTS) ấm giữa các lần chạy. 0 = không tự tắt.
+    "engineIdleMinutes": 0,
 }
 
 
 def load_tts_settings() -> dict:
     """Đọc mặc định TTS. Ghi file lần đầu nếu chưa có."""
-    global TTS_ENGINE, TTS_VOICE, TTS_RATE, TTS_BGM_ENABLED
+    global TTS_ENGINE, TTS_VOICE, TTS_RATE, TTS_BGM_ENABLED, TTS_ENGINE_IDLE_MINUTES
     data = dict(_TTS_SETTING_DEFAULTS)
     if TTS_SETTINGS_PATH.is_file():
         try:
@@ -115,10 +117,15 @@ def load_tts_settings() -> dict:
             encoding="utf-8",
         )
     data["bgmEnabled"] = bool(data["bgmEnabled"])
+    try:
+        data["engineIdleMinutes"] = max(0, int(data.get("engineIdleMinutes") or 0))
+    except (TypeError, ValueError):
+        data["engineIdleMinutes"] = 0
     TTS_ENGINE = str(data["engine"])
     TTS_VOICE = str(data["voice"])
     TTS_RATE = str(data["rate"])
     TTS_BGM_ENABLED = data["bgmEnabled"]
+    TTS_ENGINE_IDLE_MINUTES = data["engineIdleMinutes"]
     return data
 
 
@@ -126,6 +133,7 @@ TTS_ENGINE = str(_TTS_SETTING_DEFAULTS["engine"])
 TTS_VOICE = str(_TTS_SETTING_DEFAULTS["voice"])
 TTS_RATE = str(_TTS_SETTING_DEFAULTS["rate"])
 TTS_BGM_ENABLED = bool(_TTS_SETTING_DEFAULTS["bgmEnabled"])
+TTS_ENGINE_IDLE_MINUTES = int(_TTS_SETTING_DEFAULTS["engineIdleMinutes"])
 load_tts_settings()
 
 # Playwright

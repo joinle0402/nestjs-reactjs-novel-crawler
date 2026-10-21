@@ -35,6 +35,9 @@ export class TtsSettingsResponse {
     @ApiProperty()
     bgmEnabled!: boolean;
 
+    @ApiProperty({ example: 10, description: 'Số phút giữ engine offline ấm; 0 = không tự tắt' })
+    engineIdleMinutes!: number;
+
     @ApiProperty({ type: [TtsVoiceOption] })
     voices!: TtsVoiceOption[];
 
