@@ -40,7 +40,7 @@ export class ChaptersService {
     async findByNovel(novelId: number, query: ListChaptersQuery): Promise<PaginatedResponse<ChapterListItem>> {
         await this.novelsService.findOne(novelId);
 
-        const page = query.page ?? 1;
+        let page = query.page ?? 1;
         const limit = query.limit ?? 15;
 
         const qb = this.chaptersRepository
@@ -94,6 +94,24 @@ export class ChaptersService {
                 qb.andWhere("chapter.mp3Path IS NOT NULL AND chapter.mp3Path <> ''");
                 if (onDriveNumbers.length > 0) {
                     qb.andWhere('chapter.chapterNumber NOT IN (:...onDriveNumbers)', { onDriveNumbers });
+                }
+            }
+        }
+
+        if (query.focusChapterId) {
+            const focus = await this.chaptersRepository.findOne({
+                where: { id: query.focusChapterId, novelId },
+                select: ['id', 'chapterNumber'],
+            });
+            if (focus) {
+                const before = await qb
+                    .clone()
+                    .andWhere('chapter.chapterNumber <= :focusChapterNumber', {
+                        focusChapterNumber: focus.chapterNumber,
+                    })
+                    .getCount();
+                if (before > 0) {
+                    page = Math.ceil(before / limit);
                 }
             }
         }

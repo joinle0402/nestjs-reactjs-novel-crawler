@@ -56,4 +56,11 @@ export class ListChaptersQuery {
     @IsBoolean()
     @ApiPropertyOptional({ description: 'Lọc chương đã upload lên Drive (true) hoặc chưa (false)' })
     onDrive?: boolean;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @ApiPropertyOptional({ description: 'ID chương cần mở; server tự chọn trang chứa chương này' })
+    focusChapterId?: number;
 }

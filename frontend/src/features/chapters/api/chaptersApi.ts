@@ -87,6 +87,7 @@ export type ListChaptersParams = {
     ttsStatus?: JobStatus;
     hasMp3?: boolean;
     onDrive?: boolean;
+    focusChapterId?: number;
 };
 
 export type CreateChapterBody = {
