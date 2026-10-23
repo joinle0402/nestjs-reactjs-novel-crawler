@@ -15,6 +15,7 @@ import {
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BottomPlayer } from '@/features/audio/BottomPlayer.tsx';
 import { useAudioPlayer } from '@/features/audio/AudioPlayerContext.tsx';
+import { usePlayerHotkeys } from '@/features/audio/usePlayerHotkeys.ts';
 import { useBgmTracksQuery } from '@/features/bgm/hooks/useBgmQueries.ts';
 import { isActiveTtsJob } from '@/features/tts/api/ttsApi.ts';
 import { useTtsJobWatch } from '@/features/tts/hooks/useTtsQueries.ts';
@@ -37,6 +38,7 @@ export function MainLayout() {
     const { mode, toggle, accent, setAccent } = useThemeMode();
     const { token } = theme.useToken();
     const { track, bgmId, setBgmAlwaysOn } = useAudioPlayer();
+    const hotkeys = usePlayerHotkeys();
     const bgmQuery = useBgmTracksQuery();
     const bgmTracks = bgmQuery.data ?? [];
     const jobQuery = useTtsJobWatch();
@@ -288,7 +290,7 @@ export function MainLayout() {
                 >
                     <Outlet />
                 </Content>
-                <BottomPlayer siderWidth={collapsed ? 64 : 220} />
+                <BottomPlayer siderWidth={collapsed ? 64 : 220} hotkeys={hotkeys} />
             </Layout>
         </Layout>
     );

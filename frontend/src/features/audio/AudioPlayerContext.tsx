@@ -36,6 +36,7 @@ type AudioPlayerContextValue = {
     togglePlay: () => void;
     pause: () => void;
     seek: (seconds: number) => void;
+    seekBy: (deltaSeconds: number) => void;
     setRate: (rate: number) => void;
     setBgmId: (id: string | null) => void;
     setBgmAlwaysOn: (id: string | null) => void;
@@ -440,6 +441,14 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         void savePlayback(true);
     };
 
+    const seekBy = (deltaSeconds: number) => {
+        const audio = audioRef.current;
+        if (!audio || !Number.isFinite(deltaSeconds)) {
+            return;
+        }
+        seek((audio.currentTime || 0) + deltaSeconds);
+    };
+
     const setRate = (nextRate: number) => {
         rateRef.current = nextRate;
         setRateState(nextRate);
@@ -594,6 +603,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         togglePlay,
         pause,
         seek,
+        seekBy,
         setRate,
         setBgmId,
         setBgmAlwaysOn,

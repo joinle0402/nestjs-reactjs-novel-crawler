@@ -18,7 +18,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { CaretRightOutlined, CloudDownloadOutlined, CloudSyncOutlined, CloudUploadOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
 import { useNovelStatsQuery } from '@/features/novels/hooks/useNovelStatsQuery.ts';
@@ -111,7 +111,8 @@ export function NovelDetailPage() {
     const [runRequest, setRunRequest] = useState<TtsRunRequest | null>(null);
     const [driveRequest, setDriveRequest] = useState<DriveRunRequest | null>(null);
     const { areaRef, bodyHeight } = useTableScrollFit();
-
+    /** Chương mốc cho chọn nhanh bằng Shift (chỉ có ý nghĩa trong trang đang hiển thị). */
+    const selectionAnchorRef = useRef<number | null>(null);
     const createMutation = useCreateChapterMutation();
     const crawlMutation = useCreateCrawlJobMutation();
     const crawlQuery = useCurrentCrawlJobQuery();
@@ -219,6 +220,7 @@ export function NovelDetailPage() {
         setSelectedChapters(new Map());
         setRunRequest(null);
         setDriveRequest(null);
+        selectionAnchorRef.current = null;
     }, [novelId]);
 
     useEffect(() => {
@@ -453,7 +455,6 @@ export function NovelDetailPage() {
     const novel = novelQuery.data;
     const stats = statsQuery.data;
     const boundaryNumber = stats?.lastCrawled ?? null;
-    const totalChapters = stats?.total ?? 0;
     const missing = previewQuery.data?.missing ?? 0;
     const failed = previewQuery.data?.failed ?? 0;
     const selectedList = [...selectedChapters.values()];
@@ -464,6 +465,29 @@ export function NovelDetailPage() {
         selectedList.filter((chapter) => chapter.crawlStatus === JobStatus.COMPLETED && !chapter.hasMp3),
     );
     const driveNumbers = numbersOf(selectedList.filter((chapter) => chapter.hasMp3 && !isOnDrive(chapter)));
+
+    const chapterRows = chaptersQuery.data?.data ?? [];
+
+    /**
+     * Chọn nhanh cả dải chương giữa mốc neo và chương vừa bấm (Shift+click).
+     * Chỉ áp dụng trong trang đang hiển thị; trả `false` khi không tìm thấy mốc.
+     */
+    const selectChapterRange = (anchorId: number, targetId: number): boolean => {
+        const fromIndex = chapterRows.findIndex((chapter) => chapter.id === anchorId);
+        const toIndex = chapterRows.findIndex((chapter) => chapter.id === targetId);
+        if (fromIndex < 0 || toIndex < 0) {
+            return false;
+        }
+        const range = chapterRows.slice(Math.min(fromIndex, toIndex), Math.max(fromIndex, toIndex) + 1);
+        setSelectedChapters((current) => {
+            const next = new Map(current);
+            for (const chapter of range) {
+                next.set(chapter.id, chapter);
+            }
+            return next;
+        });
+        return true;
+    };
 
     const ttsAction = (() => {
         if (selectedChapters.size > 0) {
@@ -667,28 +691,6 @@ export function NovelDetailPage() {
                     </StatPill>
                 </Space>
 
-                {boundaryNumber != null && totalChapters > boundaryNumber ? (
-                    <Alert
-                        type="info"
-                        showIcon
-                        style={{ marginBottom: 12 }}
-                        message={`Cào dừng tại chương ${boundaryNumber}/${totalChapters}`}
-                        description="Chương phía trên đã có nội dung. Bấm Cào tiếp để lấy các chương còn lại từ chính nguồn này. Nguồn khác là một truyện riêng — tạo tác vụ cào với URL của nguồn đó."
-                        action={
-                            <Button
-                                size="small"
-                                type="primary"
-                                disabled={crawlActive}
-                                onClick={() =>
-                                    navigate(`/crawl?novelId=${novel.id}&chapterRange=${boundaryNumber + 1}-`)
-                                }
-                            >
-                                Cào tiếp
-                            </Button>
-                        }
-                    />
-                ) : null}
-
                 {chaptersQuery.isError ? (
                     <Alert type="error" showIcon title="Không tải được mục lục" description={getErrorMessage(chaptersQuery.error)} />
                 ) : !chaptersQuery.isLoading && !chaptersQuery.data?.data.length ? (
@@ -698,7 +700,26 @@ export function NovelDetailPage() {
                         </Button>
                     </Empty>
                 ) : (
-                    <div ref={areaRef}>
+                    <div
+                        ref={areaRef}
+                        onClickCapture={(event) => {
+                            // Shift + click ô tick: chọn nhanh cả dải giống như click vào dòng.
+                            if (!event.shiftKey) {
+                                return;
+                            }
+                            const target = event.target;
+                            if (!(target instanceof HTMLElement) || !target.closest('.ant-table-selection-column')) {
+                                return;
+                            }
+                            const rowKey = target.closest('tr')?.getAttribute('data-row-key');
+                            const anchorId = selectionAnchorRef.current;
+                            if (!rowKey || anchorId == null || !selectChapterRange(anchorId, Number(rowKey))) {
+                                return;
+                            }
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }}
+                    >
                         <Table<ChapterListItem>
                             rowKey="id"
                             size="small"
@@ -726,15 +747,32 @@ export function NovelDetailPage() {
                                         }
                                         return next;
                                     });
+                                    // Ghi nhớ chương vừa tick/bỏ tick để Shift+click sau đó lấy làm mốc.
+                                    const previousIds = new Set(selectedChapters.keys());
+                                    const nextIds = new Set(keys.map(Number));
+                                    const toggled = [
+                                        ...[...nextIds].filter((id) => !previousIds.has(id)),
+                                        ...[...previousIds].filter((id) => !nextIds.has(id)),
+                                    ];
+                                    if (toggled.length === 1) {
+                                        selectionAnchorRef.current = toggled[0];
+                                    }
                                 },
                             }}
                             pagination={false}
                             onRow={(chapter) => ({
-                                style: { cursor: 'pointer' },
+                                style: { cursor: 'pointer', userSelect: 'none' },
                                 onClick: (event) => {
                                     if (isRowActionTarget(event.target)) {
                                         return;
                                     }
+                                    if (event.shiftKey) {
+                                        const anchorId = selectionAnchorRef.current;
+                                        if (anchorId != null && selectChapterRange(anchorId, chapter.id)) {
+                                            return;
+                                        }
+                                    }
+                                    selectionAnchorRef.current = chapter.id;
                                     setSelectedChapters((current) => {
                                         const next = new Map(current);
                                         if (next.has(chapter.id)) {

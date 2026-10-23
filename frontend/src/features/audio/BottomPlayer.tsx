@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Button, Dropdown, Popover, Select, Slider, Space, Typography } from 'antd';
+import { Button, Dropdown, Popover, Select, Slider, Space, Switch, Typography } from 'antd';
 import {
     CloseOutlined,
     CustomerServiceOutlined,
     ForwardOutlined,
+    KeyOutlined,
     PauseCircleFilled,
     PlayCircleFilled,
     BackwardOutlined,
@@ -11,6 +12,7 @@ import {
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { RATES, useAudioPlayer } from '@/features/audio/AudioPlayerContext.tsx';
+import { PLAYER_SHORTCUTS, type PlayerHotkeys } from '@/features/audio/usePlayerHotkeys.ts';
 import { isActiveTtsJob } from '@/features/tts/api/ttsApi.ts';
 import { TtsJobLine } from '@/features/tts/components/TtsJobLine.tsx';
 import { useCurrentTtsJobQuery } from '@/features/tts/hooks/useTtsQueries.ts';
@@ -36,9 +38,10 @@ const BGM_OFF_VALUE = '__bgm_off__';
 
 type BottomPlayerProps = {
     siderWidth: number;
+    hotkeys: PlayerHotkeys;
 };
 
-export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
+export function BottomPlayer({ siderWidth, hotkeys }: BottomPlayerProps) {
     const {
         track,
         status,
@@ -60,7 +63,9 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
     const tracksQuery = useBgmTracksQuery(Boolean(track));
     const tracks = tracksQuery.data ?? [];
     const selectDefaultBgmRef = useRef(selectDefaultBgm);
-    selectDefaultBgmRef.current = selectDefaultBgm;
+    useEffect(() => {
+        selectDefaultBgmRef.current = selectDefaultBgm;
+    }, [selectDefaultBgm]);
     useEffect(() => {
         if (!track) {
             return;
@@ -164,6 +169,8 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
                         disabled={!track.prev}
                         onClick={() => void playPrev()}
                         aria-label="Chương trước"
+                        aria-keyshortcuts={hotkeys.enabled ? 'Shift+ArrowLeft' : undefined}
+                        title={hotkeys.enabled ? 'Chương trước (Shift + ←)' : undefined}
                     />
                     <Button
                         type="text"
@@ -172,6 +179,8 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
                         icon={isPlaying && !isLoading ? <PauseCircleFilled /> : <PlayCircleFilled />}
                         onClick={togglePlay}
                         aria-label={isPlaying ? 'Tạm dừng' : 'Phát'}
+                        aria-keyshortcuts={hotkeys.enabled ? 'Space' : undefined}
+                        title={hotkeys.enabled ? 'Phát / tạm dừng (Space)' : undefined}
                     />
                     <Button
                         type="text"
@@ -179,6 +188,8 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
                         disabled={!track.next}
                         onClick={() => void playNext()}
                         aria-label="Chương sau"
+                        aria-keyshortcuts={hotkeys.enabled ? 'Shift+ArrowRight' : undefined}
+                        title={hotkeys.enabled ? 'Chương sau (Shift + →)' : undefined}
                     />
                 </Space>
 
@@ -224,6 +235,46 @@ export function BottomPlayer({ siderWidth }: BottomPlayerProps) {
                         className={`bottom-player__bgm-trigger${effectiveBgmId ? ' bottom-player__bgm-trigger--active' : ''}`}
                         icon={<CustomerServiceOutlined />}
                         aria-label="Nhạc nền"
+                    />
+                </Popover>
+
+                <Popover
+                    trigger="click"
+                    placement="topRight"
+                    title="Phím tắt nghe truyện"
+                    content={
+                        <div className="bottom-player__shortcuts">
+                            <div className="bottom-player__shortcut-list">
+                                {PLAYER_SHORTCUTS.map((shortcut) => (
+                                    <div className="bottom-player__shortcut" key={shortcut.label}>
+                                        <span className="bottom-player__shortcut-keys">
+                                            {shortcut.keys.map((key) => (
+                                                <kbd key={key}>{key}</kbd>
+                                            ))}
+                                        </span>
+                                        <span className="bottom-player__shortcut-label">{shortcut.label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="bottom-player__shortcut-toggle">
+                                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                    Bật phím tắt
+                                </Typography.Text>
+                                <Switch
+                                    size="small"
+                                    checked={hotkeys.enabled}
+                                    onChange={hotkeys.setEnabled}
+                                    aria-label="Bật phím tắt nghe truyện"
+                                />
+                            </div>
+                        </div>
+                    }
+                >
+                    <Button
+                        type="text"
+                        className={`bottom-player__hotkeys-trigger${hotkeys.enabled ? '' : ' bottom-player__hotkeys-trigger--off'}`}
+                        icon={<KeyOutlined />}
+                        aria-label="Phím tắt nghe truyện"
                     />
                 </Popover>
 
