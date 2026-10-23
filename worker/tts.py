@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import re
 import shutil
 import subprocess
@@ -34,10 +35,13 @@ from config import (
     TTS_VOICE,
     VIENEU_CHUNK_MAX_CHARS,
     VIENEU_CHUNK_MAX_SENTENCES,
-    VIENEU_CHUNK_PAUSE_MS,
     VIENEU_CHUNK_SHORT_CHARS,
     VIENEU_CHUNK_SHORT_MAX_CHARS,
     VIENEU_CHUNK_SHORT_MAX_SENTENCES,
+    VIENEU_PAUSE_CLAUSE_MS,
+    VIENEU_PAUSE_JITTER,
+    VIENEU_PAUSE_PARAGRAPH_MS,
+    VIENEU_PAUSE_SENTENCE_MS,
     SELECTORS,
 )
 from db import (
@@ -371,15 +375,54 @@ def _pack_vieneu_sentences(sentences: list[str]) -> list[str]:
 
 def _split_vieneu_chunks(text: str) -> list[str]:
     """Gói theo ngữ nghĩa: thoại dính câu dẫn/nối, mỗi infer còn nhịp đọc."""
+    return _split_vieneu_chunks_with_gaps(text)[0]
+
+
+_VIENEU_PAUSE_BY_KIND = {
+    "paragraph": VIENEU_PAUSE_PARAGRAPH_MS,
+    "sentence": VIENEU_PAUSE_SENTENCE_MS,
+    "clause": VIENEU_PAUSE_CLAUSE_MS,
+}
+
+
+def _vieneu_boundary_kind(chunk: str) -> str:
+    """Loại ranh giới SAU chunk: hết câu hay mới ngắt cụm (câu bị cắt ở dấu phẩy)."""
+    tail = chunk.rstrip()
+    while tail and tail[-1] in _VIENEU_CLOSERS:
+        tail = tail[:-1].rstrip()
+    return "sentence" if tail.endswith((".", "!", "?", "…")) else "clause"
+
+
+def _vieneu_gap_ms(kind: str) -> int:
+    """Nghỉ giữa hai chunk, có jitter để nhịp không đều như máy."""
+    base = _VIENEU_PAUSE_BY_KIND.get(kind, VIENEU_PAUSE_SENTENCE_MS)
+    if VIENEU_PAUSE_JITTER > 0:
+        base *= random.uniform(1 - VIENEU_PAUSE_JITTER, 1 + VIENEU_PAUSE_JITTER)
+    return max(80, int(base))
+
+
+def _split_vieneu_chunks_with_gaps(text: str) -> tuple[list[str], list[str]]:
+    """Như _split_vieneu_chunks nhưng kèm loại ranh giới giữa các chunk.
+
+    gaps[i] là ranh giới giữa chunks[i] và chunks[i+1]:
+    ``paragraph`` (hết đoạn), ``sentence`` (hết câu), ``clause`` (cắt cụm).
+    """
     chunks: list[str] = []
+    gaps: list[str] = []
     for paragraph in re.split(r"\n\s*\n", text):
         sentences: list[str] = []
         for line in paragraph.splitlines():
             line = line.strip()
             if line:
                 sentences.extend(_split_vieneu_sentences(line))
-        chunks.extend(_pack_vieneu_sentences(sentences))
-    return [chunk for chunk in chunks if chunk.strip()]
+        for index, piece in enumerate(_pack_vieneu_sentences(sentences)):
+            piece = piece.strip()
+            if not piece:
+                continue
+            if chunks:
+                gaps.append("paragraph" if index == 0 else _vieneu_boundary_kind(chunks[-1]))
+            chunks.append(piece)
+    return chunks, gaps
 
 
 async def _write_vieneu_chunks(
@@ -390,6 +433,7 @@ async def _write_vieneu_chunks(
     engine: str = "vieneu",
     voice: str,
     rate: str,
+    gaps: list[str] | None = None,
     on_chunk_done: Callable[[int], None] | None = None,
 ) -> None:
     if not chunks:
@@ -421,7 +465,15 @@ async def _write_vieneu_chunks(
                 )
             )
         await asyncio.gather(*tasks)
-        _merge_mp3_files(chunk_paths, output_path, gap_ms=VIENEU_CHUNK_PAUSE_MS)
+        gaps_ms = None
+        if gaps and len(gaps) >= len(chunks) - 1:
+            gaps_ms = [_vieneu_gap_ms(gaps[i]) for i in range(len(chunks) - 1)]
+        _merge_mp3_files(
+            chunk_paths,
+            output_path,
+            gap_ms=VIENEU_PAUSE_SENTENCE_MS,
+            gaps_ms=gaps_ms,
+        )
 
 
 async def _text_to_mp3(
@@ -678,27 +730,31 @@ def _merge_mp3_files(
     chunk_paths: list[Path],
     output_path: Path,
     gap_ms: int = 0,
+    gaps_ms: list[int] | None = None,
 ) -> None:
-    """Ghép các chunk MP3 — ưu tiên pydub+ffmpeg, fallback nối byte."""
+    """Ghép các chunk MP3 — ưu tiên pydub+ffmpeg, fallback nối byte.
+
+    ``gaps_ms[i]`` là khoảng nghỉ trước ``chunk_paths[i+1]``; nếu bỏ trống thì
+    dùng ``gap_ms`` cho mọi mối nối.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if _ffmpeg_on_path():
         try:
             from pydub import AudioSegment
 
             combined = AudioSegment.empty()
-            gap: AudioSegment | None = None
-            for path in chunk_paths:
+            for index, path in enumerate(chunk_paths):
                 seg = AudioSegment.from_mp3(str(path))
-                if gap_ms > 0 and gap is None:
-                    # Khoảng nghỉ khớp định dạng chunk đầu tiên; room tone
-                    # thay im lặng kỹ thuật số để nhịp nghỉ không bị "khô".
-                    gap = _room_tone_gap(
-                        gap_ms,
-                        frame_rate=seg.frame_rate,
-                        channels=seg.channels,
-                    ) or AudioSegment.silent(duration=gap_ms, frame_rate=seg.frame_rate)
-                if len(combined) > 0 and gap is not None:
-                    combined += gap
+                if index > 0:
+                    duration = gaps_ms[index - 1] if gaps_ms else gap_ms
+                    if duration > 0:
+                        # Room tone thay im lặng kỹ thuật số để nhịp nghỉ không "khô".
+                        gap = _room_tone_gap(
+                            duration,
+                            frame_rate=seg.frame_rate,
+                            channels=seg.channels,
+                        ) or AudioSegment.silent(duration=duration, frame_rate=seg.frame_rate)
+                        combined += gap
                 # Fade 2 đầu mỗi chunk để mối nối không phát tiếng "cạch"
                 # do biên độ không về 0 tại biên file.
                 seg = seg.fade_in(15).fade_out(25)
@@ -808,7 +864,7 @@ async def _tts_chapter_content(
         content = _prepare_vieneu_speech(content)
         if not content:
             raise ValueError("Nội dung chương rỗng sau khi chuẩn hóa")
-        chunks = _split_vieneu_chunks(content)
+        chunks, gaps = _split_vieneu_chunks_with_gaps(content)
         if not chunks:
             raise ValueError("Nội dung chương rỗng sau khi chia câu")
         chars_total = sum(len(chunk) for chunk in chunks)
@@ -826,6 +882,7 @@ async def _tts_chapter_content(
             engine=engine,
             voice=voice,
             rate=rate,
+            gaps=gaps,
             on_chunk_done=_on_vieneu_chunk_done,
         )
         return
@@ -978,16 +1035,21 @@ def synthesize_clip(
     if not normalized:
         raise ValueError("Văn bản thử giọng rỗng sau khi chuẩn hóa")
     if engine in OFFLINE_ENGINES:
-        asyncio.run(
-            _write_vieneu_chunks(
-                _split_vieneu_chunks(_prepare_vieneu_speech(normalized)),
+        chunks, gaps = _split_vieneu_chunks_with_gaps(_prepare_vieneu_speech(normalized))
+
+        async def _render_clip() -> None:
+            # Semaphore phải tạo trong loop của asyncio.run (Python 3.8).
+            await _write_vieneu_chunks(
+                chunks,
                 output_path,
                 asyncio.Semaphore(TTS_CHUNK_CONCURRENCY),
                 engine=engine,
                 voice=voice,
                 rate=rate,
+                gaps=gaps,
             )
-        )
+
+        asyncio.run(_render_clip())
         return
     asyncio.run(_text_to_mp3(normalized, output_path, engine=engine, voice=voice, rate=rate))
 
@@ -1003,16 +1065,21 @@ def chapter_to_mp3(text: str, output_path: Path) -> None:
     voice = str(settings["voice"])
     rate = str(settings["rate"])
     if engine in OFFLINE_ENGINES:
-        asyncio.run(
-            _write_vieneu_chunks(
-                _split_vieneu_chunks(_prepare_vieneu_speech(text)),
+        chunks, gaps = _split_vieneu_chunks_with_gaps(_prepare_vieneu_speech(text))
+
+        async def _render_chapter() -> None:
+            # Semaphore phải tạo trong loop của asyncio.run (Python 3.8).
+            await _write_vieneu_chunks(
+                chunks,
                 output_path,
                 asyncio.Semaphore(TTS_CHUNK_CONCURRENCY),
                 engine=engine,
                 voice=voice,
                 rate=rate,
+                gaps=gaps,
             )
-        )
+
+        asyncio.run(_render_chapter())
     else:
         asyncio.run(
             _text_to_mp3_with_retry(

@@ -32,7 +32,7 @@ Crawl may call TTS when `run_tts=True`. Crawl job rules live in the `crawler-wor
 - One active TTS worker at a time. Respect `tts_worker.lock`.
 - Skip chapters that already have a valid MP3, and chapters with no content.
 - `_normalize_tts_text` only strips tags, URLs, control characters, emoji, and known junk. Do not rewrite, summarize, or paraphrase the story.
-- VieNeu packs sentences with quote-aware semantics: a sentence adjacent to quoted dialogue joins the chunk ignoring the sentence cap (char budget `VIENEU_CHUNK_*` stays the hard limit); `VIENEU_CHUNK_PAUSE_MS` (350) is inserted between chunks. `_prepare_vieneu_speech` only adjusts pauses and punctuation. Edge-TTS still uses `_split_text_into_chunks` and `TTS_CHUNK_SIZE`.
+- VieNeu packs sentences with quote-aware semantics: a sentence adjacent to quoted dialogue joins the chunk ignoring the sentence cap (char budget `VIENEU_CHUNK_*` stays the hard limit); gaps between chunks follow the boundary kind — `VIENEU_PAUSE_PARAGRAPH_MS` (620), `VIENEU_PAUSE_SENTENCE_MS` (360), `VIENEU_PAUSE_CLAUSE_MS` (180) with `VIENEU_PAUSE_JITTER` (±18%) so the rhythm is not metronomic. `_prepare_vieneu_speech` only adjusts pauses and punctuation. Edge-TTS still uses `_split_text_into_chunks` and `TTS_CHUNK_SIZE`.
 - Chunking needs ffmpeg. Without ffmpeg, still write the voice MP3. Mixing a library track at Drive upload also needs ffmpeg; if ffmpeg is missing that upload job fails and the voice file stays as it is.
 - MP3 generation honours `bgmEnabled` (from `tts_settings.json`; job snapshots it in `bgm_enabled`). When on and ffmpeg + BGM path exist, `_tts_chapter` mixes the BGM into the chapter MP3 before loudness norm and marks the chapter `has_bgm`; mixing failure keeps the voice file and leaves the flag false. When off, the MP3 is voice only. The player also layers a track from `worker/bgm/` beside the voice; the selector under the bottom bar defaults to the first library track unless the listener turned background music off, and it offers an explicit "Không nhạc nền" option. Drive upload mixes the chosen track into a temp copy.
 - Chapter carries `has_bgm` (`chapters.has_bgm`, API `hasBgm` on detail/list/neighbor) meaning the stored MP3 already has background music baked in. Player defaults BGM off for such chapters (per-track override, does not overwrite the listener's saved choice). TTS sets it from whether it mixed BGM; also settable via `set_chapter_has_bgm` in `worker/db.py` or `PUT /chapters/:id { hasBgm }`.
@@ -49,7 +49,7 @@ API surface on `TtsController`: `getSettings`, `updateSettings`, `savedSample`, 
 | Sample playback | `TtsSampleService`, `worker/tts_sample.py` |
 | Launch or stop the worker | `TtsWorkerService`, `worker/tts_worker.py` |
 | Which chapters get audio | `generate_mp3_for_novel` |
-| Per-chapter synthesis and chunks | `_tts_chapter`, `_tts_chapter_content`; edge-tts `_split_text_into_chunks`; VieNeu `_split_vieneu_chunks` |
+| Per-chapter synthesis and chunks | `_tts_chapter`, `_tts_chapter_content`; edge-tts `_split_text_into_chunks`; VieNeu `_split_vieneu_chunks_with_gaps`; merge/gaps `_merge_mp3_files` |
 | VieNeu process | `worker/tts_vieneu.py` |
 | ZeroTTS process | `worker/tts_zerotts.py` |
 | Engine warm process, idle TTL, fingerprint | `worker/engine_client.py`, `worker/tts_engine_server.py`, `worker/stop_engines.py` |
@@ -84,3 +84,4 @@ If the code and this file disagree, trust a fresh `get_code_snippet`, then fix t
 - 2026-10-17 — TTS generation mixes BGM into the chapter MP3 again when `bgmEnabled` is on (settings + per-job `bgm_enabled`) and sets `has_bgm` from the mix result; `bgmEnabled` toggle restored in TTS settings UI.
 - 2026-10-17 — Added `zerotts` engine (ZeroTTS, ONNX CPU): own `.venv-zerotts` + `tts_zerotts.py` process, shares the VieNeu sentence chunking and `VIENEU_CHUNK_*`/pause invariants; rate % ignored like VieNeu.
 - 2026-10-21 — Offline engines now live in a detached broker (`tts_engine_server.py`) reused across jobs/previews/crawl; added `engineIdleMinutes` setting (0 = never) and `worker/stop_engines.py`.
+- 2026-10-21 — Default offline voice switched to the `Quỳnh Anh` preset (real-voice preset beats the edge-tts clone on WER/brightness); chunk gaps now follow boundary kind with jitter instead of a flat 350ms; preview/chapter `asyncio.Semaphore` moved inside the run loop for Python 3.8.

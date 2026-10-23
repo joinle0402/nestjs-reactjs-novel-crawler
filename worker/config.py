@@ -169,7 +169,12 @@ VIENEU_CHUNK_MAX_SENTENCES = 3
 VIENEU_CHUNK_SHORT_CHARS = 80
 VIENEU_CHUNK_SHORT_MAX_SENTENCES = 6
 VIENEU_CHUNK_SHORT_MAX_CHARS = 420
-VIENEU_CHUNK_PAUSE_MS = 350
+# Nghỉ giữa các chunk khi ghép MP3. Người đọc thật nghỉ dài ở hết đoạn, vừa ở
+# hết câu, ngắn ở chỗ ngắt cụm; jitter phá nhịp đều đều kiểu metronome.
+VIENEU_PAUSE_PARAGRAPH_MS = 620
+VIENEU_PAUSE_SENTENCE_MS = 360
+VIENEU_PAUSE_CLAUSE_MS = 180
+VIENEU_PAUSE_JITTER = 0.18
 
 # Lưu session Playwright sau captcha (tái sử dụng lần sau)
 BROWSER_STATE_PATH = str(WORKER_DIR / "browser_state.json")

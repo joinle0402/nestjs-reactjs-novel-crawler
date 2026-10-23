@@ -2,5 +2,6 @@
   "engine": "vieneu",
   "voice": "Hoài My (Clone)",
   "rate": "+50%",
-  "bgmEnabled": true
+  "bgmEnabled": true,
+  "engineIdleMinutes": 0
 }
