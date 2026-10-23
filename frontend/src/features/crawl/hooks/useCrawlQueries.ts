@@ -17,7 +17,6 @@ import {
     resumeCrawlJob,
     retryCrawlJob,
     updateCrawlJob,
-    type CrawlChapterStatus,
     type CrawlJobStatus,
     type CreateCrawlJobBody,
 } from '@/features/crawl/api/crawlApi.ts';
@@ -30,7 +29,7 @@ export const crawlKeys = {
     lookup: (url: string) => ['crawl', 'lookup', url] as const,
     list: (status: string, page: number, limit: number) => ['crawl', 'jobs', status, page, limit] as const,
     job: (id: number) => ['crawl', 'job', id] as const,
-    chapters: (id: number, status: string) => ['crawl', 'chapters', id, status] as const,
+    chapters: (id: number) => ['crawl', 'chapters', id] as const,
 };
 
 const POLL_MS = 3000;
@@ -122,10 +121,10 @@ export function useCrawlJobQuery(id: number | null) {
     });
 }
 
-export function useCrawlChaptersQuery(id: number | null, status: CrawlChapterStatus | '', active: boolean) {
+export function useCrawlChaptersQuery(id: number | null, active: boolean) {
     return useQuery({
-        queryKey: crawlKeys.chapters(id ?? 0, status),
-        queryFn: () => getCrawlJobChapters(id!, status || undefined),
+        queryKey: crawlKeys.chapters(id ?? 0),
+        queryFn: () => getCrawlJobChapters(id!),
         enabled: !!id,
         refetchInterval: active ? POLL_MS : false,
     });

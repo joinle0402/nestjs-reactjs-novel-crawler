@@ -101,6 +101,14 @@ export const CRAWL_STATUS_LABEL: Record<CrawlJobStatus, string> = {
     cancelled: 'Đã hủy',
 };
 
+export const CRAWL_CHAPTER_STATUS_LABEL: Record<CrawlChapterStatus, string> = {
+    pending: 'Chờ',
+    running: 'Đang cào',
+    completed: 'Xong',
+    failed: 'Lỗi',
+    skipped: 'Bỏ qua',
+};
+
 export const CRAWL_STATUS_COLOR: Record<CrawlJobStatus, string> = {
     pending: 'warning',
     running: 'processing',

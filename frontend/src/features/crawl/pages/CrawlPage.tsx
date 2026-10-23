@@ -16,7 +16,6 @@ import {
     CRAWL_STATUS_LABEL,
     canEditCrawlJob,
     isActiveCrawlJob,
-    type CrawlChapterStatus,
     type CrawlJob,
     type CrawlJobStatus,
     type CrawlScope,
@@ -151,13 +150,12 @@ export function CrawlPage() {
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(DEFAULT_PAGE_LIMIT);
     const [selectedJobIds, setSelectedJobIds] = useState<number[]>([]);
-    const [chapterFilter, setChapterFilter] = useState<CrawlChapterStatus | ''>('');
     const { areaRef, bodyHeight } = useTableScrollFit();
     const jobsQuery = useCrawlJobsQuery(statusFilter, page, pageSize);
     const active = currentQuery.data && isActiveCrawlJob(currentQuery.data) ? currentQuery.data : null;
     const detailQuery = useCrawlJobQuery(detailOpen ? selectedId : null);
     const detail = detailOpen ? (detailQuery.data ?? null) : null;
-    const chaptersQuery = useCrawlChaptersQuery(detailOpen ? selectedId : null, chapterFilter, isActiveCrawlJob(detail));
+    const chaptersQuery = useCrawlChaptersQuery(detailOpen ? selectedId : null, isActiveCrawlJob(detail));
     const pauseMutation = useCrawlActionMutation('pause');
     const resumeMutation = useCrawlActionMutation('resume');
     const continueMutation = useCrawlActionMutation('continue');
@@ -191,7 +189,6 @@ export function CrawlPage() {
     const openDetail = (id: number) => {
         setSelectedId(id);
         setDetailOpen(true);
-        setChapterFilter('');
         setDraft(null);
     };
 
@@ -505,10 +502,8 @@ export function CrawlPage() {
                 job={detail}
                 chapters={chaptersQuery.data ?? []}
                 chaptersLoading={chaptersQuery.isFetching}
-                chapterFilter={chapterFilter}
                 activeJobId={active?.id ?? null}
                 actionPending={actionPending}
-                onChapterFilter={setChapterFilter}
                 onClose={() => setDetailOpen(false)}
                 onAction={run}
                 onEdit={(job) => {

@@ -776,6 +776,46 @@ a {
     justify-content: space-between;
 }
 
+.crawl-detail__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.crawl-detail__title {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.crawl-detail__progress-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.crawl-detail__progress-row .ant-progress {
+    flex: 1 1 220px;
+    min-width: 140px;
+    margin: 0;
+}
+
+.crawl-detail__meta {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.crawl-chapter-table .ant-table-thead > tr > th {
+    padding-block: 8px;
+}
+
+.crawl-chapter-table .ant-table-tbody > tr > td {
+    padding-block: 5px;
+}
+
 @media (max-width: 991px) {
     .dash-stats {
         grid-template-columns: repeat(2, minmax(0, 1fr));

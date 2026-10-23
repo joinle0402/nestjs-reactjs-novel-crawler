@@ -1,8 +1,9 @@
-import { Alert, Button, Drawer, Progress, Radio, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Drawer, Progress, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+    CRAWL_CHAPTER_STATUS_LABEL,
     CRAWL_STATUS_LABEL,
     canEditCrawlJob,
     canResumeCrawlJob,
@@ -19,10 +20,8 @@ type CrawlDetailDrawerProps = {
     job: CrawlJob | null;
     chapters: CrawlJobChapter[];
     chaptersLoading: boolean;
-    chapterFilter: CrawlChapterStatus | '';
     activeJobId: number | null;
     actionPending: boolean;
-    onChapterFilter: (value: CrawlChapterStatus | '') => void;
     onClose: () => void;
     onAction: (action: 'pause' | 'resume' | 'continue' | 'cancel' | 'retry', id: number) => void;
     onEdit?: (job: CrawlJob) => void;
@@ -58,14 +57,45 @@ function elapsed(startedAt: string | null, finishedAt: string | null): string {
     return [h, m, s].map((part) => String(part).padStart(2, '0')).join(':');
 }
 
+function scopeText(job: CrawlJob): string {
+    if (job.scope === 'chapters') {
+        return `Phạm vi ${job.chapterRange || 'khoảng chương'}`;
+    }
+    if (job.scope === 'missing') {
+        return 'Chương chưa có nội dung';
+    }
+    if (job.scope === 'failed') {
+        return 'Chương lỗi';
+    }
+    if (job.scope === 'refresh') {
+        return 'Cập nhật chương mới';
+    }
+    return job.scope;
+}
+
+function progressText(job: CrawlJob): string {
+    const { progress } = job;
+    if (progress.total === 0) {
+        return progress.detail;
+    }
+    return [
+        job.status === 'running' && progress.currentChapterNumber != null ? `Chương ${progress.currentChapterNumber}` : null,
+        `Hoàn thành ${progress.completed}/${progress.total}`,
+        `Còn lại ${progress.pending}`,
+        progress.failed > 0 ? `Lỗi ${progress.failed}` : null,
+        progress.skipped > 0 ? `Bỏ qua ${progress.skipped}` : null,
+        `Thời gian ${elapsed(job.startedAt, job.finishedAt)}`,
+    ]
+        .filter((part): part is string => part !== null)
+        .join(' · ');
+}
+
 export function CrawlDetailDrawer({
     job,
     chapters,
     chaptersLoading,
-    chapterFilter,
     activeJobId,
     actionPending,
-    onChapterFilter,
     onClose,
     onAction,
     onEdit,
@@ -74,19 +104,32 @@ export function CrawlDetailDrawer({
 }: CrawlDetailDrawerProps) {
     const [logOpen, setLogOpen] = useState(false);
     const blockedByOther = activeJobId != null && activeJobId !== job?.id;
-    const currentTitle = chapters.find((row) => row.status === 'running')?.title ?? null;
+    const orderOf = useMemo(() => {
+        const map = new Map<number, number>();
+        chapters.forEach((row, index) => map.set(row.id, index + 1));
+        return map;
+    }, [chapters]);
 
     const chapterColumns: ColumnsType<CrawlJobChapter> = [
-        { title: 'Chương', dataIndex: 'chapterNumber', width: 90 },
-        { title: 'Tên', dataIndex: 'title', ellipsis: true },
         {
-            title: 'Kết quả',
-            dataIndex: 'status',
-            width: 120,
-            render: (status: CrawlChapterStatus) => <Tag color={statusColor(status)}>{status}</Tag>,
+            title: 'STT',
+            key: 'order',
+            width: 56,
+            align: 'right',
+            render: (_value, row) => orderOf.get(row.id) ?? 0,
         },
-        { title: 'Lần thử', dataIndex: 'attemptCount', width: 90 },
-        { title: 'Lỗi', dataIndex: 'errorMessage', ellipsis: true },
+        {
+            title: 'Tên',
+            dataIndex: 'title',
+            ellipsis: true,
+            render: (title: string | null, row) => title || `Chương ${row.chapterNumber}`,
+        },
+        {
+            title: 'Trạng thái',
+            dataIndex: 'status',
+            width: 130,
+            render: (status: CrawlChapterStatus) => <Tag color={statusColor(status)}>{CRAWL_CHAPTER_STATUS_LABEL[status]}</Tag>,
+        },
     ];
 
     return (
@@ -100,37 +143,22 @@ export function CrawlDetailDrawer({
                 extra={job ? <Tag color={statusColor(job.status)}>{CRAWL_STATUS_LABEL[job.status]}</Tag> : null}
             >
                 {job ? (
-                    <Space orientation="vertical" size={12} style={{ width: '100%' }}>
-                        <div>
-                            {job.novelId ? <Link to={`/novels/${job.novelId}`}>{job.novelTitle || job.url}</Link> : job.url}
-                            <Typography.Text type="secondary"> — {job.progress.detail}</Typography.Text>
-                        </div>
-                        <Typography.Text type="secondary">
-                            Phạm vi: {job.scope === 'chapters' ? job.chapterRange || 'khoảng chương' : job.scope === 'missing' ? 'chương chưa có nội dung' : job.scope === 'failed' ? 'chương lỗi' : job.scope === 'refresh' ? 'cập nhật danh sách chương mới' : job.scope}
-                        </Typography.Text>
-                        {job.status === 'running' && job.progress.currentChapterNumber != null ? (
-                            <Typography.Text>
-                                {`Đang cào: Chương ${job.progress.currentChapterNumber}${currentTitle ? ` — ${currentTitle}` : ''} — [${job.progress.completed + job.progress.failed + job.progress.skipped + 1}/${job.progress.total}]`}
+                    <Space orientation="vertical" size={10} style={{ width: '100%' }}>
+                        <div className="crawl-detail__head">
+                            <Typography.Text strong ellipsis className="crawl-detail__title">
+                                {job.novelId ? <Link to={`/novels/${job.novelId}`}>{job.novelTitle || job.url}</Link> : job.url}
                             </Typography.Text>
-                        ) : null}
+                            <Tag style={{ marginInlineEnd: 0 }}>{scopeText(job)}</Tag>
+                        </div>
+                        <div className="crawl-detail__progress-row">
+                            <Progress percent={job.progress.percent ?? 0} status={job.progress.percent == null ? 'active' : undefined} />
+                            <Typography.Text type="secondary" className="crawl-detail__meta">
+                                {progressText(job)}
+                            </Typography.Text>
+                        </div>
                         <CrawlRestTag restUntil={job.status === 'running' ? job.restUntil : null} restKind={job.restKind} />
-                        <Progress percent={job.progress.percent ?? 0} status={job.progress.percent == null ? 'active' : undefined} />
-                        <Space size={24} wrap>
-                            <span>Hoàn thành: {job.progress.completed}</span>
-                            <span>Bỏ qua: {job.progress.skipped}</span>
-                            <span>Thất bại: {job.progress.failed}</span>
-                            <span>Còn lại: {job.progress.pending}</span>
-                            <span>Thời gian: {elapsed(job.startedAt, job.finishedAt)}</span>
-                        </Space>
-                        {job.status === 'waiting_for_manual_action' ? (
-                            <Alert type="warning" showIcon title="Cần thao tác trên Chrome do worker mở" description={job.errorMessage || 'Giải captcha nếu có, đợi trang load, rồi bấm Tiếp tục.'} />
-                        ) : null}
-                        {job.errorMessage && job.status !== 'waiting_for_manual_action' ? <Alert type="error" showIcon title={job.errorMessage} /> : null}
-                        {canResumeCrawlJob(job.status) ? (
-                            <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                                Tiếp tục chạy lại đúng task này. Worker bỏ qua chương đã có nội dung.
-                            </Typography.Paragraph>
-                        ) : null}
+                        {job.status === 'waiting_for_manual_action' ? <Alert type="warning" showIcon title="Cần thao tác trên Chrome do worker mở" /> : null}
+                        {job.errorMessage && !isActiveCrawlJob(job) ? <Alert type="error" showIcon title={job.errorMessage} /> : null}
                         <Space wrap>
                             {job.status === 'running' ? (
                                 <Button onClick={() => onAction('pause', job.id)} loading={actionPending}>
@@ -167,25 +195,15 @@ export function CrawlDetailDrawer({
                             ) : null}
                         </Space>
                         {blockedByOther ? <Typography.Text type="secondary">Đang có task #{activeJobId}. Hủy task đó trước khi tiếp tục task này.</Typography.Text> : null}
-                        <Radio.Group
-                            value={chapterFilter}
-                            onChange={(event) => onChapterFilter(event.target.value)}
-                            options={[
-                                { label: 'Mọi chương', value: '' },
-                                { label: 'Lỗi', value: 'failed' },
-                                { label: 'Đang chạy', value: 'running' },
-                                { label: 'Xong', value: 'completed' },
-                                { label: 'Bỏ qua', value: 'skipped' },
-                            ]}
-                            optionType="button"
-                        />
                         <Table
+                            className="crawl-chapter-table"
                             rowKey="id"
                             size="small"
                             columns={chapterColumns}
                             dataSource={chapters}
                             loading={chaptersLoading}
-                            pagination={{ pageSize: 20, showSizeChanger: false }}
+                            scroll={{ y: 'max(240px, calc(100vh - 310px))' }}
+                            pagination={{ pageSize: 20, showSizeChanger: false, size: 'small' }}
                             locale={{ emptyText: job.progress.total === 0 ? 'Worker đang lấy danh sách chương' : 'Chưa có dòng chương' }}
                         />
                     </Space>

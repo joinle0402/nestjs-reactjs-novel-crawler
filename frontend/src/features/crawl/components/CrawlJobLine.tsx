@@ -11,7 +11,6 @@ import {
     CRAWL_STATUS_COLOR,
     CRAWL_STATUS_LABEL,
     isActiveCrawlJob,
-    type CrawlChapterStatus,
     type CrawlJob,
 } from '@/features/crawl/api/crawlApi.ts';
 import { CrawlDetailDrawer } from '@/features/crawl/components/CrawlDetailDrawer.tsx';
@@ -25,7 +24,6 @@ type CrawlJobLineProps = {
 
 export function CrawlJobLine({ job }: CrawlJobLineProps) {
     const [detailOpen, setDetailOpen] = useState(false);
-    const [chapterFilter, setChapterFilter] = useState<CrawlChapterStatus | ''>('');
     const pauseMutation = useCrawlActionMutation('pause');
     const resumeMutation = useCrawlActionMutation('resume');
     const continueMutation = useCrawlActionMutation('continue');
@@ -40,13 +38,10 @@ export function CrawlJobLine({ job }: CrawlJobLineProps) {
     const isPaused = job.status === 'paused';
 
     const detailQuery = useCrawlJobQuery(detailOpen ? job.id : null);
-    const chaptersQuery = useCrawlChaptersQuery(detailOpen ? job.id : null, chapterFilter, isActiveCrawlJob(detailQuery.data ?? job));
+    const chaptersQuery = useCrawlChaptersQuery(detailOpen ? job.id : null, isActiveCrawlJob(detailQuery.data ?? job));
     const detail = detailQuery.data ?? job;
 
-    const openDetail = (filter: CrawlChapterStatus | '' = '') => {
-        setChapterFilter(filter);
-        setDetailOpen(true);
-    };
+    const openDetail = () => setDetailOpen(true);
 
     const run = (action: 'pause' | 'resume' | 'continue' | 'cancel' | 'retry', id: number) => {
         const mutation = { pause: pauseMutation, resume: resumeMutation, continue: continueMutation, cancel: cancelMutation, retry: retryMutation }[action];
@@ -97,8 +92,8 @@ export function CrawlJobLine({ job }: CrawlJobLineProps) {
                     />
                 </div>
                 {job.progress.failed > 0 ? (
-                    <Tooltip title="Xem các chương lỗi">
-                        <Tag color="error" className="tts-job-line__failed" onClick={(event) => { event.stopPropagation(); openDetail('failed'); }}>
+                    <Tooltip title="Xem chi tiết các chương lỗi">
+                        <Tag color="error" className="tts-job-line__failed" onClick={(event) => { event.stopPropagation(); openDetail(); }}>
                             {job.progress.failed} lỗi
                         </Tag>
                     </Tooltip>
@@ -140,10 +135,8 @@ export function CrawlJobLine({ job }: CrawlJobLineProps) {
                 job={detailOpen ? detail : null}
                 chapters={chaptersQuery.data ?? []}
                 chaptersLoading={chaptersQuery.isFetching}
-                chapterFilter={chapterFilter}
                 activeJobId={job.id}
                 actionPending={actionPending}
-                onChapterFilter={setChapterFilter}
                 onClose={() => setDetailOpen(false)}
                 onAction={run}
             />
