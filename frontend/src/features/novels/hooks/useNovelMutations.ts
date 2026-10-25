@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     createNovel,
     deleteNovel,
+    openNovelFolder,
     removeNovelCover,
     syncNovelChapters,
     updateNovel,
@@ -64,6 +65,13 @@ export function useSyncNovelChaptersMutation() {
             void queryClient.invalidateQueries({ queryKey: novelKeys.stats(id) });
             void queryClient.invalidateQueries({ queryKey: chapterKeys.lists() });
         },
+    });
+}
+
+/** Mở thư mục MP3 của truyện bằng File Explorer trên máy chạy backend. */
+export function useOpenNovelFolderMutation() {
+    return useMutation({
+        mutationFn: (id: number) => openNovelFolder(id),
     });
 }
 

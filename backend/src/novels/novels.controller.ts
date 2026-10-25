@@ -12,6 +12,7 @@ import { SyncNovelChaptersResponse } from './dtos/responses/sync-chapters.respon
 import { UpdatePlaybackRequest } from './dtos/requests/update-playback.request';
 import { PlaybackState } from './entities/playback-state.entity';
 import { MAX_COVER_BYTES, type UploadedCover } from './novel-cover';
+import { NovelFolderResponse } from './dtos/responses/novel-folder.response';
 
 @ApiTags('Novels')
 @Controller('novels')
@@ -30,6 +31,14 @@ export class NovelsController {
     @ApiResponse({ status: 200, type: NovelStatsResponse })
     async getStats(@Param('id', ParseIntPipe) id: number): Promise<NovelStatsResponse> {
         return this.novelsService.getStats(id);
+    }
+
+    @Post(':id/open-folder')
+    @HttpCode(200)
+    @ApiOperation({ summary: 'Mở thư mục MP3 của truyện trên máy chủ bằng File Explorer' })
+    @ApiResponse({ status: 200, type: NovelFolderResponse })
+    async openFolder(@Param('id', ParseIntPipe) id: number): Promise<NovelFolderResponse> {
+        return this.novelsService.openLocalFolder(id);
     }
 
     @Post(':id/sync-chapters')

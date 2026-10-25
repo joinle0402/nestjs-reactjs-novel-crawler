@@ -16,12 +16,13 @@ import {
     theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { CaretRightOutlined, CloudDownloadOutlined, CloudSyncOutlined, CloudUploadOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
+import { CaretRightOutlined, CloudDownloadOutlined, CloudSyncOutlined, CloudUploadOutlined, DeleteOutlined, EditOutlined, FolderOpenOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useNovelQuery } from '@/features/novels/hooks/useNovelQuery.ts';
 import { useNovelStatsQuery } from '@/features/novels/hooks/useNovelStatsQuery.ts';
+import { useOpenNovelFolderMutation } from '@/features/novels/hooks/useNovelMutations.ts';
 import { useChaptersQuery } from '@/features/chapters/hooks/useChaptersQuery.ts';
 import { useChapterQuery } from '@/features/chapters/hooks/useChapterQuery.ts';
 import {
@@ -30,8 +31,7 @@ import {
     useUpdateChapterMutation,
 } from '@/features/chapters/hooks/useChapterMutations.ts';
 import { ChapterFormModal, type ChapterFormValues } from '@/features/chapters/components/ChapterFormModal.tsx';
-import type { ChapterListItem, ChapterSource, ListChaptersParams } from '@/features/chapters/api/chaptersApi.ts';
-import { CHAPTER_SOURCE_LABEL, chapterSourceColor } from '@/features/chapters/api/chaptersApi.ts';
+import type { ChapterListItem, ListChaptersParams } from '@/features/chapters/api/chaptersApi.ts';
 import { JobStatusTag } from '@/shared/ui/JobStatusTag.tsx';
 import { JOB_STATUS_OPTIONS, JobStatus, type JobStatus as JobStatusValue } from '@/shared/types/jobStatus.ts';
 import { getErrorMessage } from '@/shared/api/errorMessage.ts';
@@ -121,6 +121,7 @@ export function NovelDetailPage() {
     const driveActive = isActiveDriveJob(driveQuery.data);
     const drivePreviewQuery = useDrivePreviewQuery(novelId);
     const syncDriveMutation = useSyncDrivePreviewMutation();
+    const openFolderMutation = useOpenNovelFolderMutation();
     const updateMutation = useUpdateChapterMutation();
     const deleteMutation = useDeleteChapterMutation();
 
@@ -353,16 +354,6 @@ export function NovelDetailPage() {
             width: 80,
         },
         {
-            title: 'Nguồn',
-            dataIndex: 'source',
-            width: 110,
-            render: (source: ChapterSource) => (
-                <Tag color={chapterSourceColor(source)} style={{ marginInlineEnd: 0 }}>
-                    {CHAPTER_SOURCE_LABEL[source] ?? source}
-                </Tag>
-            ),
-        },
-        {
             title: 'Chương',
             dataIndex: 'title',
             ellipsis: true,
@@ -543,6 +534,25 @@ export function NovelDetailPage() {
                                     </Typography.Link>
                                 </>
                             ) : null}
+                            {' '}
+                            <Button
+                                type="link"
+                                size="small"
+                                disabled={openFolderMutation.isPending}
+                                title="Mở thư mục chứa chương truyện trên máy"
+                                onClick={() => {
+                                    openFolderMutation.mutate(novel.id, {
+                                        onSuccess: (result) =>
+                                            result.found
+                                                ? message.success(`Đã mở thư mục: ${result.folderPath}`)
+                                                : message.info('Truyện chưa có thư mục MP3, đã mở thư mục output/mp3'),
+                                        onError: (error) => message.error(getErrorMessage(error, 'Không mở được thư mục')),
+                                    });
+                                }}
+                                style={{ fontWeight: 'normal', fontSize: 13, padding: 0 }}
+                            >
+                                (Folder)
+                            </Button>
                             {' - '}
                             {novel.author || 'Không rõ tác giả'}
                         </div>

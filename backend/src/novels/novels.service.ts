@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import type { Response } from 'express';
 import { throwUnless } from '../common/utils/throw-if';
 import { Novel } from './entities/novel.entity';
@@ -18,6 +18,8 @@ import type { CrawlPreviewResponse } from '../crawl/dtos/responses/crawl.respons
 import { detectSourceKind } from '../crawl/novel-url';
 import { isRemoteCover, removeStoredCover, resolveStoredCover, saveUploadedCover, type UploadedCover } from './novel-cover';
 import { JobStatus } from '../common/enums/job-status.enum';
+import { openFolderInExplorer, resolveNovelMp3Folder } from './novel-folder';
+import { NovelFolderResponse } from './dtos/responses/novel-folder.response';
 
 @Injectable()
 export class NovelsService {
@@ -54,6 +56,25 @@ export class NovelsService {
         const model = await this.novelsRepository.findOne({ where: { id } });
         throwUnless(model, 'Novel not found', HttpStatus.NOT_FOUND);
         return model;
+    }
+
+    /**
+     * Mở thư mục chứa MP3 của truyện bằng File Explorer trên máy chạy backend.
+     * Dùng `mp3_path` của các chương để tìm đúng thư mục, không đoán mò theo tên.
+     */
+    async openLocalFolder(id: number): Promise<NovelFolderResponse> {
+        const novel = await this.findOne(id);
+        const chapters = await this.chaptersRepository.find({
+            where: { novelId: id, mp3Path: Not(IsNull()) },
+            select: { mp3Path: true },
+            order: { chapterNumber: 'DESC' },
+        });
+        const folder = resolveNovelMp3Folder(
+            novel.title,
+            chapters.map((chapter) => chapter.mp3Path),
+        );
+        openFolderInExplorer(folder.path);
+        return { folderPath: folder.path, found: folder.found };
     }
 
     async create(request: CreateNovelRequest): Promise<Novel> {

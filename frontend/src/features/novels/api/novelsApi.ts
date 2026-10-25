@@ -59,6 +59,11 @@ export type SyncNovelChaptersResult = {
     vipCount: number;
 };
 
+export type NovelFolderResult = {
+    folderPath: string;
+    found: boolean;
+};
+
 export const getNovels = () => axiosClient.get<NovelListItem[]>('/novels');
 
 export const getNovel = (id: number) => axiosClient.get<Novel>(`/novels/${id}`);
@@ -78,6 +83,9 @@ export const removeNovelCover = (id: number) => axiosClient.delete<Novel>(`/nove
 
 export const syncNovelChapters = (id: number) =>
     axiosClient.post<SyncNovelChaptersResult>(`/novels/${id}/sync-chapters`, undefined, { timeout: 65000 });
+
+export const openNovelFolder = (id: number) =>
+    axiosClient.post<NovelFolderResult>(`/novels/${id}/open-folder`);
 
 export const getPlayback = (novelId: number) =>
     axiosClient.get<PlaybackState | null>(`/novels/${novelId}/playback`);
