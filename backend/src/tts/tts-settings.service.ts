@@ -13,6 +13,7 @@ export type TtsSettings = {
     rate: string;
     bgmEnabled: boolean;
     engineIdleMinutes: number;
+    keepEngineWarm: boolean;
 };
 
 const DEFAULTS: TtsSettings = {
@@ -21,6 +22,7 @@ const DEFAULTS: TtsSettings = {
     rate: '+50%',
     bgmEnabled: true,
     engineIdleMinutes: 0,
+    keepEngineWarm: false,
 };
 
 const ENGINE_LABELS: Record<TtsEngine, string> = {
@@ -69,6 +71,7 @@ export class TtsSettingsService {
             rate: request.rate,
             bgmEnabled: request.bgmEnabled,
             engineIdleMinutes: request.engineIdleMinutes,
+            keepEngineWarm: request.keepEngineWarm,
         };
         await this.write(next);
         return {
@@ -111,7 +114,8 @@ export class TtsSettingsService {
         const bgmEnabled = typeof record.bgmEnabled === 'boolean' ? record.bgmEnabled : DEFAULTS.bgmEnabled;
         const idleRaw = typeof record.engineIdleMinutes === 'number' ? record.engineIdleMinutes : DEFAULTS.engineIdleMinutes;
         const engineIdleMinutes = Number.isFinite(idleRaw) ? Math.min(1440, Math.max(0, Math.trunc(idleRaw))) : DEFAULTS.engineIdleMinutes;
-        return { engine, voice, rate, bgmEnabled, engineIdleMinutes };
+        const keepEngineWarm = typeof record.keepEngineWarm === 'boolean' ? record.keepEngineWarm : DEFAULTS.keepEngineWarm;
+        return { engine, voice, rate, bgmEnabled, engineIdleMinutes, keepEngineWarm };
     }
 
     private async write(settings: TtsSettings): Promise<void> {

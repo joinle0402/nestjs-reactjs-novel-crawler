@@ -16,7 +16,7 @@ for _stream in (sys.stdout, sys.stderr):
     if _reconfigure is not None:
         _reconfigure(encoding="utf-8", errors="replace")
 
-from tts import synthesize_clip
+from tts import release_engines_if_not_kept, synthesize_clip
 from log_utils import log_message
 
 # Đổi câu thì sửa cả TTS_SAVED_SAMPLE_TEXT trong tts-sample.service.ts.
@@ -47,7 +47,7 @@ def _ready(path: Path) -> bool:
     return path.is_file() and path.stat().st_size > 100
 
 
-def _write_one(engine: str, voice: str, rate: str) -> None:
+def _write_one(engine: str, voice: str, rate: str, *, release_engine: bool = True) -> None:
     path = CACHE_DIR / cache_filename(engine, voice, rate)
     if _ready(path):
         log_message(f"có sẵn {path.name}")
@@ -55,7 +55,7 @@ def _write_one(engine: str, voice: str, rate: str) -> None:
     tmp = path.with_name(f"{path.stem}.part.mp3")
     log_message(f"đang lưu {path.name}")
     try:
-        synthesize_clip(CANONICAL_TEXT, tmp, engine=engine, voice=voice, rate=rate)
+        synthesize_clip(CANONICAL_TEXT, tmp, engine=engine, voice=voice, rate=rate, release_engine=release_engine)
         if not _ready(tmp):
             raise RuntimeError(f"File rỗng: {path.name}")
         tmp.replace(path)
@@ -67,16 +67,20 @@ def _write_one(engine: str, voice: str, rate: str) -> None:
 
 def fill_cache(engine: str | None = None) -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    if not engine or engine == "edge-tts":
-        for voice in _voice_ids("EDGE_TTS_VOICES"):
-            for rate in _EDGE_RATES:
-                _write_one("edge-tts", voice, rate)
-    if not engine or engine == "vieneu":
-        for voice in _voice_ids("VIENEU_VOICES"):
-            _write_one("vieneu", voice, "+0%")
-    if not engine or engine == "zerotts":
-        for voice in _voice_ids("ZEROTTS_VOICES"):
-            _write_one("zerotts", voice, "+0%")
+    # Giữ engine trong suốt lượt lưu cache để không nạp lại model cho từng giọng.
+    try:
+        if not engine or engine == "edge-tts":
+            for voice in _voice_ids("EDGE_TTS_VOICES"):
+                for rate in _EDGE_RATES:
+                    _write_one("edge-tts", voice, rate, release_engine=False)
+        if not engine or engine == "vieneu":
+            for voice in _voice_ids("VIENEU_VOICES"):
+                _write_one("vieneu", voice, "+0%", release_engine=False)
+        if not engine or engine == "zerotts":
+            for voice in _voice_ids("ZEROTTS_VOICES"):
+                _write_one("zerotts", voice, "+0%", release_engine=False)
+    finally:
+        release_engines_if_not_kept()
 
 
 def main() -> None:

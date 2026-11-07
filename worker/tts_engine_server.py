@@ -37,6 +37,9 @@ from engine_client import (  # noqa: E402
 from log_utils import format_duration, format_elapsed, log_message  # noqa: E402
 
 IDLE_CHECK_SEC = 15.0
+# Khi người dùng tắt "giữ engine": client tự tắt engine ngay khi xong việc, đây chỉ là
+# lưới an toàn nếu client chết giữa chừng — model không nằm lại quá lâu trong RAM/VRAM.
+IDLE_GRACE_MINUTES = 5
 MAX_REQUEST_BYTES = 2_000_000
 
 
@@ -64,6 +67,15 @@ def _read_idle_minutes() -> int:
     except (TypeError, ValueError):
         return 0
     return max(0, minutes)
+
+
+def _read_keep_warm() -> bool:
+    """False = người dùng không muốn giữ engine sau khi xong việc."""
+    try:
+        data = json.loads((WORKER_DIR / "tts_settings.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return bool(data.get("keepEngineWarm")) if isinstance(data, dict) else False
 
 
 class _Activity:
@@ -191,6 +203,8 @@ def _handle(
 def _idle_monitor(activity: _Activity, stop_event: threading.Event) -> None:
     while not stop_event.wait(IDLE_CHECK_SEC):
         minutes = _read_idle_minutes()
+        if not _read_keep_warm():
+            minutes = IDLE_GRACE_MINUTES if minutes <= 0 else min(minutes, IDLE_GRACE_MINUTES)
         if minutes <= 0:
             continue
         idle = activity.idle_seconds()

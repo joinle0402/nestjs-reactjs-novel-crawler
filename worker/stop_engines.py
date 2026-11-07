@@ -1,7 +1,8 @@
 """Dừng các process engine TTS (VieNeu / ZeroTTS) đang giữ model trong RAM/VRAM.
 
-Mặc định engine không tự tắt (engineIdleMinutes = 0). Chạy script này khi muốn
-giải phóng bộ nhớ mà không cần tắt máy:
+Khi tắt "Giữ engine trong bộ nhớ" (keepEngineWarm = false, mặc định), engine tự tắt
+ngay khi xong việc. Script này dùng khi engine vẫn còn sống (bật giữ ấm, hoặc process
+client chết giữa chừng) mà muốn giải phóng bộ nhớ ngay:
 
     python worker/stop_engines.py
 """

@@ -38,6 +38,9 @@ export class TtsSettingsResponse {
     @ApiProperty({ example: 10, description: 'Số phút giữ engine offline ấm; 0 = không tự tắt' })
     engineIdleMinutes!: number;
 
+    @ApiProperty({ example: false, description: 'true = giữ engine offline ấm cho lần sau; false = tắt ngay khi xong việc' })
+    keepEngineWarm!: boolean;
+
     @ApiProperty({ type: [TtsVoiceOption] })
     voices!: TtsVoiceOption[];
 

@@ -33,6 +33,7 @@ type SettingsForm = {
     rate: string;
     bgmEnabled: boolean;
     engineIdleMinutes: number;
+    keepEngineWarm: boolean;
 };
 
 export function TtsSettingsPage() {
@@ -56,6 +57,7 @@ export function TtsSettingsPage() {
             rate: settingsQuery.data.rate,
             bgmEnabled: settingsQuery.data.bgmEnabled,
             engineIdleMinutes: settingsQuery.data.engineIdleMinutes,
+            keepEngineWarm: settingsQuery.data.keepEngineWarm,
         });
     }, [form, settingsQuery.data]);
 
@@ -82,6 +84,7 @@ export function TtsSettingsPage() {
                 rate: values.rate.trim(),
                 bgmEnabled: Boolean(values.bgmEnabled),
                 engineIdleMinutes: Number(values.engineIdleMinutes ?? 0),
+                keepEngineWarm: Boolean(values.keepEngineWarm),
             },
             {
                 onSuccess: () => message.success('Đã lưu cài đặt TTS'),
@@ -160,6 +163,7 @@ export function TtsSettingsPage() {
 
     const engines = settingsQuery.data?.engines ?? [];
     const engine = Form.useWatch('engine', form) || settingsQuery.data?.engine;
+    const keepEngineWarm = Form.useWatch('keepEngineWarm', form) ?? settingsQuery.data?.keepEngineWarm ?? false;
     const selectedEngine = engines.find((item) => item.id === engine);
     const rateApplies = selectedEngine?.rateApplies !== false;
     const voiceOptions = (selectedEngine?.voices ?? settingsQuery.data?.voices ?? []).map((voice) => ({
@@ -230,12 +234,22 @@ export function TtsSettingsPage() {
                         <Switch />
                     </Form.Item>
                     <Form.Item
-                        name="engineIdleMinutes"
+                        name="keepEngineWarm"
                         label="Giữ engine trong bộ nhớ"
-                        extra="Áp dụng cho VieNeu/ZeroTTS: engine nạp model một lần rồi dùng lại cho các lần TTS, nghe thử và crawl sau đó. 0 = không tự tắt; engine chỉ dừng khi tắt máy hoặc chạy worker/stop_engines.py."
+                        valuePropName="checked"
+                        extra="Áp dụng cho VieNeu/ZeroTTS. Bật: engine nạp model một lần rồi dùng lại cho các lần TTS, nghe thử và crawl sau đó (nhanh hơn). Tắt: engine tắt ngay khi xong việc để giải phóng RAM/VRAM, lần sau nạp lại model."
                     >
-                        <Select options={IDLE_OPTIONS} />
+                        <Switch />
                     </Form.Item>
+                    {keepEngineWarm ? (
+                        <Form.Item
+                            name="engineIdleMinutes"
+                            label="Tự tắt engine khi rảnh"
+                            extra="0 = không tự tắt; engine chỉ dừng khi tắt máy hoặc chạy worker/stop_engines.py."
+                        >
+                            <Select options={IDLE_OPTIONS} />
+                        </Form.Item>
+                    ) : null}
                     <Form.Item
                         label="Thử giọng"
                         extra={

@@ -16,6 +16,7 @@ import edge_tts
 
 from tts_vieneu_client import close_vieneu, synthesize_vieneu
 from tts_zerotts_client import close_zerotts, synthesize_zerotts
+from engine_client import shutdown_all_engines
 from log_utils import format_duration, format_elapsed, log_message
 from config import (
     BGM_EXPORT_BITRATE,
@@ -1022,6 +1023,20 @@ async def _generate_all_mp3(
     return success, failed
 
 
+def release_engines_if_not_kept(settings: dict | None = None) -> None:
+    """Tắt engine offline khi xong việc nếu người dùng không bật "giữ engine ấm".
+
+    Tắt = lần chạy sau nạp lại model (chậm hơn) nhưng RAM/VRAM được giải phóng ngay.
+    """
+    if settings is None:
+        from config import load_tts_settings
+
+        settings = load_tts_settings()
+    if settings.get("keepEngineWarm"):
+        return
+    shutdown_all_engines()
+
+
 def synthesize_clip(
     text: str,
     output_path: Path,
@@ -1029,8 +1044,27 @@ def synthesize_clip(
     engine: str,
     voice: str,
     rate: str,
+    release_engine: bool = True,
 ) -> None:
     """Một đoạn ngắn, không nhạc nền. Dùng cho nút nghe thử trên trang cài đặt."""
+    from config import load_tts_settings
+
+    settings = load_tts_settings()
+    try:
+        _synthesize_clip(text, output_path, engine=engine, voice=voice, rate=rate)
+    finally:
+        if release_engine:
+            release_engines_if_not_kept(settings)
+
+
+def _synthesize_clip(
+    text: str,
+    output_path: Path,
+    *,
+    engine: str,
+    voice: str,
+    rate: str,
+) -> None:
     normalized = _normalize_tts_text(text)
     if not normalized:
         raise ValueError("Văn bản thử giọng rỗng sau khi chuẩn hóa")
@@ -1169,24 +1203,27 @@ def generate_mp3_for_novel(
 
     novel_dir = Path(MP3_OUTPUT_DIR) / _safe_filename(novel_title)
     try:
-        success, failed = asyncio.run(
-            _generate_all_mp3(
-                chapters,
-                novel_dir,
-                engine=engine,
-                voice=voice,
-                rate=rate,
-                use_bgm=mix_bgm,
-                quiet=quiet,
+        try:
+            success, failed = asyncio.run(
+                _generate_all_mp3(
+                    chapters,
+                    novel_dir,
+                    engine=engine,
+                    voice=voice,
+                    rate=rate,
+                    use_bgm=mix_bgm,
+                    quiet=quiet,
+                )
             )
-        )
-    except KeyboardInterrupt:
-        close_vieneu()
-        close_zerotts()
-        reset_processing_tts_chapters(novel_id)
-        if not quiet:
-            log_message("[TTS] Đã dừng. Chạy lại để resume các chương chưa hoàn thành.")
-        return []
+        except KeyboardInterrupt:
+            close_vieneu()
+            close_zerotts()
+            reset_processing_tts_chapters(novel_id)
+            if not quiet:
+                log_message("[TTS] Đã dừng. Chạy lại để resume các chương chưa hoàn thành.")
+            return []
+    finally:
+        release_engines_if_not_kept(settings)
 
     if not quiet:
         log_message(

@@ -470,7 +470,11 @@ class EngineClient:
             "close_fds": True,
         }
         if sys.platform == "win32":
-            kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            # Không dùng DETACHED_PROCESS: Scripts\python.exe của venv là launcher, nó chạy
+            # lại python gốc ở process cháu. Process trực tiếp không có console thì Windows
+            # cấp cho process cháu một console mới -> cửa sổ đen hiện lên. CREATE_NO_WINDOW
+            # cho process trực tiếp một console ẩn, process cháu kế thừa console đó.
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             kwargs["start_new_session"] = True
 
@@ -582,3 +586,16 @@ def shutdown_engine(engine: str) -> bool:
     client._shutdown_state(state)
     _clear_state(engine, int(state.get("pid") or 0) or None)
     return True
+
+
+def shutdown_all_engines() -> None:
+    """Tắt mọi engine offline đang chạy để giải phóng RAM/VRAM.
+
+    Dùng khi người dùng tắt "giữ engine trong bộ nhớ": xong việc là engine dừng,
+    lần chạy sau nạp lại model. Engine không chạy thì hàm này không làm gì.
+    """
+    for engine in ENGINE_NAMES:
+        try:
+            shutdown_engine(engine)
+        except Exception:
+            pass

@@ -21,6 +21,7 @@ export type TtsSettings = {
     rate: string;
     bgmEnabled: boolean;
     engineIdleMinutes: number;
+    keepEngineWarm: boolean;
     voices: TtsVoiceOption[];
     engines: TtsEngineOption[];
 };
@@ -31,6 +32,7 @@ export type UpdateTtsSettingsBody = {
     rate: string;
     bgmEnabled: boolean;
     engineIdleMinutes: number;
+    keepEngineWarm: boolean;
 };
 
 export type TtsSampleBody = {

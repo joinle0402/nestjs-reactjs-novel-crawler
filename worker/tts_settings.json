@@ -3,5 +3,6 @@
   "voice": "Hoài My (Clone)",
   "rate": "+50%",
   "bgmEnabled": true,
-  "engineIdleMinutes": 0
+  "engineIdleMinutes": 0,
+  "keepEngineWarm": false
 }

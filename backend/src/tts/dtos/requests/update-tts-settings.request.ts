@@ -26,4 +26,8 @@ export class UpdateTtsSettingsRequest {
     @Max(1440)
     @ApiProperty({ example: 10, description: 'Số phút giữ engine offline ấm sau lần dùng cuối; 0 = không tự tắt' })
     engineIdleMinutes!: number;
+
+    @IsBoolean()
+    @ApiProperty({ example: false, description: 'true = giữ engine offline ấm cho lần chạy sau; false = tắt ngay khi xong việc' })
+    keepEngineWarm!: boolean;
 }

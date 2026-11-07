@@ -94,12 +94,14 @@ _TTS_SETTING_DEFAULTS = {
     "bgmEnabled": True,
     # Giữ engine offline (VieNeu/ZeroTTS) ấm giữa các lần chạy. 0 = không tự tắt.
     "engineIdleMinutes": 0,
+    # False = tắt engine ngay khi xong việc (nạp lại model ở lần sau, đổi lại giải phóng RAM/VRAM).
+    "keepEngineWarm": False,
 }
 
 
 def load_tts_settings() -> dict:
     """Đọc mặc định TTS. Ghi file lần đầu nếu chưa có."""
-    global TTS_ENGINE, TTS_VOICE, TTS_RATE, TTS_BGM_ENABLED, TTS_ENGINE_IDLE_MINUTES
+    global TTS_ENGINE, TTS_VOICE, TTS_RATE, TTS_BGM_ENABLED, TTS_ENGINE_IDLE_MINUTES, TTS_KEEP_ENGINE_WARM
     data = dict(_TTS_SETTING_DEFAULTS)
     if TTS_SETTINGS_PATH.is_file():
         try:
@@ -117,6 +119,7 @@ def load_tts_settings() -> dict:
             encoding="utf-8",
         )
     data["bgmEnabled"] = bool(data["bgmEnabled"])
+    data["keepEngineWarm"] = bool(data["keepEngineWarm"])
     try:
         data["engineIdleMinutes"] = max(0, int(data.get("engineIdleMinutes") or 0))
     except (TypeError, ValueError):
@@ -126,6 +129,7 @@ def load_tts_settings() -> dict:
     TTS_RATE = str(data["rate"])
     TTS_BGM_ENABLED = data["bgmEnabled"]
     TTS_ENGINE_IDLE_MINUTES = data["engineIdleMinutes"]
+    TTS_KEEP_ENGINE_WARM = data["keepEngineWarm"]
     return data
 
 
@@ -134,6 +138,7 @@ TTS_VOICE = str(_TTS_SETTING_DEFAULTS["voice"])
 TTS_RATE = str(_TTS_SETTING_DEFAULTS["rate"])
 TTS_BGM_ENABLED = bool(_TTS_SETTING_DEFAULTS["bgmEnabled"])
 TTS_ENGINE_IDLE_MINUTES = int(_TTS_SETTING_DEFAULTS["engineIdleMinutes"])
+TTS_KEEP_ENGINE_WARM = bool(_TTS_SETTING_DEFAULTS["keepEngineWarm"])
 load_tts_settings()
 
 # Playwright
